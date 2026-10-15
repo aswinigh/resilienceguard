@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "enabled": true,
+  "faults": [
+    {
+      "target": "openai",
+      "action": "error",
+      "error_type": "APIConnectionError",
+      "status_code": 500,
+      "message": "Simulated 500: OpenAI upstream APIConnectionError",
+      "probability": 1.0,
+      "endpoints": [
+        "chat.completions.create"
+      ],
+      "max_occurrences": 3,
+      "delay_seconds": 0.0
+    }
+  ],
+  "circuit_breaker": {
+    "max_retries": 3,
+    "failure_threshold": 3,
+    "recovery_timeout": 30.0
+  }
+}
