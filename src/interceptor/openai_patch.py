@@ -104,6 +104,125 @@ def _resolve_profile(
     raise TypeError(f"Unsupported profile type: {type(profile).__name__}")
 
 
+def _extract_target_url(completions_self: Any) -> str | None:
+    """Extract the base URL from the underlying client instance if available."""
+    client = getattr(completions_self, "_client", None)
+    if client is not None:
+        base_url = getattr(client, "base_url", None)
+        if base_url is not None:
+            return str(base_url)
+    return None
+
+
+def _build_corrupted_response(fault: FaultRule) -> Any:
+    """Create a synthetic ChatCompletion response with malformed/corrupted tool call arguments."""
+    from openai.types.chat import ChatCompletion
+
+    corrupt_type = getattr(fault, "corrupt_type", "malformed_json")
+    if corrupt_type == "malformed_json":
+        args = '{"query": "corrupted_query_missing_brace'
+    elif corrupt_type == "invalid_type":
+        args = '{"query": 123456}'
+    else:
+        args = "invalid_non_json_string"
+
+    return ChatCompletion(
+        id=f"fault-corrupt-{int(time.time())}",
+        choices=[{
+            "finish_reason": "tool_calls",
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": "call_corrupted",
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "arguments": args,
+                    },
+                }],
+            },
+        }],
+        created=int(time.time()),
+        model="fault-injector-corrupt",
+        object="chat.completion",
+    )
+
+
+def _wrap_stream_drop(orig_stream: Any, fault: FaultRule) -> Iterator[Any]:
+    """Wrap a synchronous stream generator and drop/raise mid-stream after N chunks."""
+    from openai.types.chat import ChatCompletionChunk
+
+    threshold = getattr(fault, "stream_drop_after_chunks", 2)
+    count = 0
+    if orig_stream is not None:
+        try:
+            for chunk in orig_stream:
+                yield chunk
+                count += 1
+                if count >= threshold:
+                    raise _build_openai_error(fault)
+            return
+        except Exception as e:
+            if isinstance(e, openai.OpenAIError):
+                raise
+
+    # Synthetic stream drop fallback for offline/mock clients
+    for i in range(threshold):
+        yield ChatCompletionChunk(
+            id=f"chunk-{i}",
+            choices=[{
+                "delta": {
+                    "content": f" token_{i}",
+                    "role": "assistant" if i == 0 else None,
+                },
+                "finish_reason": None,
+                "index": 0,
+            }],
+            created=int(time.time()),
+            model="fault-injector-stream",
+            object="chat.completion.chunk",
+        )
+    raise _build_openai_error(fault)
+
+
+async def _wrap_async_stream_drop(orig_stream: Any, fault: FaultRule) -> Any:
+    """Wrap an asynchronous stream generator and drop/raise mid-stream after N chunks."""
+    from openai.types.chat import ChatCompletionChunk
+
+    threshold = getattr(fault, "stream_drop_after_chunks", 2)
+    count = 0
+    if orig_stream is not None:
+        try:
+            async for chunk in orig_stream:
+                yield chunk
+                count += 1
+                if count >= threshold:
+                    raise _build_openai_error(fault)
+            return
+        except Exception as e:
+            if isinstance(e, openai.OpenAIError):
+                raise
+
+    for i in range(threshold):
+        yield ChatCompletionChunk(
+            id=f"chunk-{i}",
+            choices=[{
+                "delta": {
+                    "content": f" token_{i}",
+                    "role": "assistant" if i == 0 else None,
+                },
+                "finish_reason": None,
+                "index": 0,
+            }],
+            created=int(time.time()),
+            model="fault-injector-stream",
+            object="chat.completion.chunk",
+        )
+    raise _build_openai_error(fault)
+
+
 class OpenAIFaultInterceptor:
     """Intercepts OpenAI chat completions to inject simulated faults."""
 
@@ -136,16 +255,29 @@ class OpenAIFaultInterceptor:
 
         @functools.wraps(orig_create)
         def intercepted_create(completions_self: Any, *args: Any, **kwargs: Any) -> Any:
-            fault = interceptor._match_fault("chat.completions.create")
+            target_url = _extract_target_url(completions_self)
+            fault = interceptor._match_fault("chat.completions.create", target_or_url=target_url)
             if fault is not None:
                 fault.record_occurrence()
                 interceptor._injected_count += 1
 
-                if fault.delay_seconds > 0:
-                    time.sleep(fault.delay_seconds)
+                delay = fault.get_delay()
+                if delay > 0:
+                    time.sleep(delay)
 
                 if fault.action == "delay":
                     return orig_create(completions_self, *args, **kwargs)
+
+                if fault.action == "stream_drop" and kwargs.get("stream"):
+                    orig_s = None
+                    try:
+                        orig_s = orig_create(completions_self, *args, **kwargs)
+                    except Exception:
+                        pass
+                    return _wrap_stream_drop(orig_s, fault)
+
+                if fault.action == "corrupt":
+                    return _build_corrupted_response(fault)
 
                 raise _build_openai_error(fault)
 
@@ -155,16 +287,29 @@ class OpenAIFaultInterceptor:
         async def intercepted_acreate(
             async_completions_self: Any, *args: Any, **kwargs: Any
         ) -> Any:
-            fault = interceptor._match_fault("chat.completions.create")
+            target_url = _extract_target_url(async_completions_self)
+            fault = interceptor._match_fault("chat.completions.create", target_or_url=target_url)
             if fault is not None:
                 fault.record_occurrence()
                 interceptor._injected_count += 1
 
-                if fault.delay_seconds > 0:
-                    await asyncio.sleep(fault.delay_seconds)
+                delay = fault.get_delay()
+                if delay > 0:
+                    await asyncio.sleep(delay)
 
                 if fault.action == "delay":
                     return await orig_acreate(async_completions_self, *args, **kwargs)
+
+                if fault.action == "stream_drop" and kwargs.get("stream"):
+                    orig_s = None
+                    try:
+                        orig_s = await orig_acreate(async_completions_self, *args, **kwargs)
+                    except Exception:
+                        pass
+                    return _wrap_async_stream_drop(orig_s, fault)
+
+                if fault.action == "corrupt":
+                    return _build_corrupted_response(fault)
 
                 raise _build_openai_error(fault)
 
@@ -207,14 +352,20 @@ class OpenAIFaultInterceptor:
         """Return the number of faults injected since instantiation or last reset."""
         return self._injected_count
 
-    def _match_fault(self, endpoint: str) -> FaultRule | None:
-        """Find matching fault rule for endpoint."""
+    def _match_fault(
+        self, endpoint: str, target_or_url: str | None = None
+    ) -> FaultRule | None:
+        """Find matching fault rule for endpoint and target."""
         if not self.profile or not self.profile.enabled:
             return None
         return (
-            self.profile.get_matching_fault(endpoint)
-            or self.profile.get_matching_fault(f"openai.{endpoint}")
-            or self.profile.get_matching_fault("chat.completions")
+            self.profile.get_matching_fault(endpoint, target_or_url=target_or_url)
+            or self.profile.get_matching_fault(
+                f"openai.{endpoint}", target_or_url=target_or_url
+            )
+            or self.profile.get_matching_fault(
+                "chat.completions", target_or_url=target_or_url
+            )
         )
 
     def __enter__(self) -> OpenAIFaultInterceptor:

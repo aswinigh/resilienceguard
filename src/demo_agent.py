@@ -51,7 +51,28 @@ def make_callable_tool(fn: Callable[..., str]) -> Any:
 
 @make_callable_tool
 def web_search(query: str) -> str:
-    """dummy tool returning simulated search results."""
+    """Tool returning web search results using Tavily if API key is present, otherwise simulated search results."""
+    tavily_key = os.environ.get("TAVILY_API_KEY")
+    if tavily_key:
+        try:
+            import httpx
+
+            resp = httpx.post(
+                "https://api.tavily.com/search",
+                json={"api_key": tavily_key, "query": query, "max_results": 3},
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                snippets = [
+                    f"- {r.get('title', 'Result')}: {r.get('content', '')}"
+                    for r in results
+                ]
+                if snippets:
+                    return "\n".join(snippets)
+        except Exception as e:
+            logger.warning("Tavily search call failed, falling back to simulation: %s", e)
+
     return f"Simulated search results for query: '{query}'"
 
 
@@ -356,11 +377,20 @@ def create_demo_agent_graph(
     client: Optional[openai.OpenAI] = None,
     max_retries: int = 3,
     model: str = "gpt-4o",
+    provider: Optional[str] = None,
 ) -> Any:
     """Build and compile the LangGraph StateGraph for the resilient demo agent."""
     if client is None:
-        api_key = os.environ.get("OPENAI_API_KEY", "mock-api-key")
-        client = openai.OpenAI(api_key=api_key)
+        if provider:
+            from src.providers import get_sponsor_client
+
+            client, resolved_model = get_sponsor_client(
+                provider=provider, model=model if model != "gpt-4o" else None
+            )
+            model = resolved_model
+        else:
+            api_key = os.environ.get("OPENAI_API_KEY", "mock-api-key")
+            client = openai.OpenAI(api_key=api_key)
 
     def agent_node(state: AgentState) -> Dict[str, Any]:
         return step_llm(state, client=client, max_retries=max_retries, model=model)
@@ -394,6 +424,7 @@ def run_demo_agent(
     max_retries: int = 3,
     model: str = "gpt-4o",
     raise_on_circuit_break: bool = False,
+    provider: Optional[str] = None,
 ) -> AgentState:
     """Initialize and run the demo agent graph with circuit breaker protection.
 
@@ -403,6 +434,7 @@ def run_demo_agent(
         max_retries: Max consecutive retries before tripping circuit breaker.
         model: Model name for chat completions.
         raise_on_circuit_break: If True, raises CircuitBreakerTrippedError when circuit breaker trips.
+        provider: Optional sponsor provider name ('nebius', 'nvidia', 'openai').
 
     Returns:
         The final AgentState after execution.
@@ -420,7 +452,9 @@ def run_demo_agent(
         "error_message": None,
     }
 
-    graph = create_demo_agent_graph(client=client, max_retries=max_retries, model=model)
+    graph = create_demo_agent_graph(
+        client=client, max_retries=max_retries, model=model, provider=provider
+    )
     final_state = graph.invoke(initial_state)
 
     if final_state.get("circuit_open") and raise_on_circuit_break:

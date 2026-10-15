@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field, field_validator
 class FaultRule(BaseModel):
     """Configuration for an individual fault injection rule."""
 
-    target: str = "openai"
-    action: str = "error"  # e.g., 'error', 'delay', 'corrupt'
+    target: str = "openai"  # e.g., 'openai', 'nebius', 'nvidia', or '*'
+    action: str = "error"  # e.g., 'error', 'delay', 'stream_drop', 'corrupt'
     error_type: str = "APIConnectionError"
     status_code: int = 500
     message: str = "Simulated 500: API connection error"
@@ -26,6 +26,10 @@ class FaultRule(BaseModel):
     endpoints: list[str] = Field(default_factory=lambda: ["chat.completions.create"])
     max_occurrences: int | None = None
     delay_seconds: float = 0.0
+    delay_min_seconds: float = 0.0
+    delay_max_seconds: float = 0.0
+    stream_drop_after_chunks: int = 2
+    corrupt_type: str = "malformed_json"  # e.g., 'malformed_json', 'truncated'
     current_occurrences: int = 0
 
     @field_validator("endpoints", mode="before")
@@ -41,12 +45,41 @@ class FaultRule(BaseModel):
             return True
         return endpoint in self.endpoints
 
-    def should_trigger(self, endpoint: str) -> bool:
-        """Check if this fault rule should trigger for the given endpoint.
+    def matches_target(self, target_or_url: str | None) -> bool:
+        """Check whether this rule applies to the specified provider target or URL."""
+        if not self.target or self.target in ("*", "all"):
+            return True
+        if target_or_url is None:
+            return self.target in ("openai", "*", "all")
 
-        Verifies endpoint match, occurrence limits, and probability check.
+        target_lower = self.target.lower()
+        url_lower = str(target_or_url).lower()
+
+        if target_lower == url_lower:
+            return True
+        if "nebius" in target_lower and "nebius" in url_lower:
+            return True
+        if "nvidia" in target_lower and "nvidia" in url_lower:
+            return True
+        if "openai" in target_lower and ("openai" in url_lower or "api.openai.com" in url_lower):
+            return True
+        return False
+
+    def get_delay(self) -> float:
+        """Calculate effective delay considering static delay or min/max jitter range."""
+        if self.delay_max_seconds > self.delay_min_seconds:
+            return random.uniform(self.delay_min_seconds, self.delay_max_seconds)
+        return self.delay_seconds
+
+    def should_trigger(self, endpoint: str, target_or_url: str | None = None) -> bool:
+        """Check if this fault rule should trigger for the given endpoint and target.
+
+        Verifies endpoint match, target match, occurrence limits, and probability check.
         """
         if not self.matches_endpoint(endpoint):
+            return False
+
+        if not self.matches_target(target_or_url):
             return False
 
         if self.max_occurrences is not None and self.current_occurrences >= self.max_occurrences:
@@ -83,16 +116,18 @@ class FaultProfile(BaseModel):
     faults: list[FaultRule] = Field(default_factory=list)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
 
-    def get_matching_fault(self, endpoint: str) -> FaultRule | None:
-        """Find the first matching fault rule for the given endpoint.
+    def get_matching_fault(
+        self, endpoint: str, target_or_url: str | None = None
+    ) -> FaultRule | None:
+        """Find the first matching fault rule for the given endpoint and target.
 
-        Checks if profile is enabled, checks endpoints match, and checks probability.
+        Checks if profile is enabled, checks endpoints & target match, and checks probability.
         """
         if not self.enabled:
             return None
 
         for fault in self.faults:
-            if fault.should_trigger(endpoint):
+            if fault.should_trigger(endpoint, target_or_url=target_or_url):
                 return fault
 
         return None
