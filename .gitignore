@@ -3,3 +3,13 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+.env
+.env.*
+!.env.example
+rg_check.json
+.rg_targets/
+spike_results.json
+spike_duplicates.json
+audit_*.json
+.rg_runs/
+fix_*.json

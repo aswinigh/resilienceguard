@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResilienceGuard Studio</title>
+<style>
+  :root {
+    --paper: #f6f4ef; --card: #fffdf9; --ink: #1c1b19; --muted: #6b675f; --line: #e3dfd5;
+    --pass: #0f7a3d; --pass-bg: #e7f4ec; --fail: #b42318; --fail-bg: #fbeae8;
+    --warn: #a15c07; --warn-bg: #fdf1dc; --na: #8a857b; --na-bg: #efece5; --accent: #5b8c00;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 var(--sans); }
+  a { color: inherit; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; padding: 22px 40px;
+           border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 5; }
+  .brand { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+  .brand small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+  .steps { display: flex; gap: 6px; margin-left: auto; }
+  .steps a { text-decoration: none; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+             font-size: 13px; color: var(--muted); }
+  .steps a b { color: var(--accent); margin-right: 4px; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  select, button { font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px;
+                   border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  button { cursor: pointer; }
+  button.primary { background: var(--ink); color: var(--card); border-color: var(--ink); }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 40px 80px; }
+  section { margin-bottom: 56px; scroll-margin-top: 100px; }
+  h2 { font-size: 22px; letter-spacing: -0.01em; margin: 0 0 4px; }
+  h2 .n { color: var(--accent); font-family: var(--mono); font-size: 15px; margin-right: 10px; }
+  .lede { color: var(--muted); margin: 0 0 20px; max-width: 760px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  .grid { display: grid; gap: 14px; }
+  .g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 860px) { .g2, .g3 { grid-template-columns: 1fr; } header, main { padding-left: 18px; padding-right: 18px; }
+    header { position: static; } .steps { margin-left: 0; } .controls { flex-wrap: wrap; width: 100%; } .controls select { max-width: 100%; flex: 1; }
+    .scoreline { flex-wrap: wrap; } .scoreline > div:last-child { margin-left: 0 !important; } }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+  .mono { font-family: var(--mono); font-size: 13px; }
+  .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+  .flow .node { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+  .flow .node.proxy { border-color: var(--warn); background: var(--warn-bg); }
+  .flow .arrow { color: var(--muted); }
+  .scoreline { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
+  .grade { font: 700 44px/1 var(--sans); width: 76px; height: 76px; display: grid; place-items: center; border-radius: 14px; }
+  .grade.A, .grade.B { background: var(--pass-bg); color: var(--pass); }
+  .grade.C, .grade.D { background: var(--warn-bg); color: var(--warn); }
+  .grade.F { background: var(--fail-bg); color: var(--fail); }
+  .scoreline .big { font-size: 18px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+       color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td .sim { color: var(--muted); font-size: 13px; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  .pill.pass { background: var(--pass-bg); color: var(--pass); }
+  .pill.fail { background: var(--fail-bg); color: var(--fail); }
+  .pill.na { background: var(--na-bg); color: var(--na); }
+  .verdict { font-size: 13px; margin-top: 4px; word-break: break-word; }
+  .tl { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
+  .tl i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; background: var(--na); }
+  .tl i.ok, .tl i.mock { background: var(--pass); }
+  .tl i.injected_error { background: var(--fail); }
+  .tl i.upstream_error { background: #6e1009; }
+  .tl i.corrupted { background: var(--warn); }
+  .tl i.circuit_open, .tl i.killed { background: var(--na); }
+  .tlrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .tlrow span { font-size: 11px; color: var(--muted); width: 58px; }
+  .tlrow .tl { margin-top: 0; }
+  .scoreline > div:nth-child(2) { flex: 1; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 10px; flex-wrap: wrap; }
+  .legend .tl { display: inline-flex; margin: 0 4px 0 0; vertical-align: -1px; }
+  .dup { border-left: 4px solid var(--fail); }
+  .dup.ok { border-left-color: var(--pass); }
+  .dup blockquote { margin: 8px 0 0; font-size: 14px; padding: 10px 12px; background: var(--paper); border-radius: 8px; }
+  .rounds { display: flex; flex-direction: column; gap: 8px; }
+  .round { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .round .r { width: 76px; font-size: 13px; color: var(--muted); }
+  .cand { font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); }
+  .cand.best { border-color: var(--pass); background: var(--pass-bg); font-weight: 600; }
+  .cand.bad { color: var(--fail); }
+  ul.changes { margin: 6px 0 0; padding-left: 18px; } ul.changes li { margin-bottom: 6px; }
+  details summary { cursor: pointer; font-weight: 600; }
+  pre.diff { font: 12px/1.5 var(--mono); background: #fbfaf7; border: 1px solid var(--line); border-radius: 8px;
+             padding: 12px; overflow: auto; max-height: 520px; margin: 12px 0 0; }
+  pre.diff .add { background: #e6f4ea; display: block; } pre.diff .del { background: #fbe9e7; display: block; }
+  pre.diff .hunk { color: #3b5bdb; display: block; }
+  .stats { display: flex; gap: 28px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  .stats b { color: var(--ink); font-size: 15px; display: block; }
+  .empty { color: var(--muted); padding: 60px 0; text-align: center; }
+  dialog { border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: min(760px, 92vw); background: var(--card); }
+  dialog::backdrop { background: rgba(28,27,25,0.35); }
+  pre.log { font: 12px/1.45 var(--mono); background: var(--ink); color: #e9e6df; border-radius: 8px; padding: 12px;
+            height: 320px; overflow: auto; white-space: pre-wrap; }
+  .checklist li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">ResilienceGuard<small>Fire drills for AI agents on Nebius Token Factory</small></div>
+  <nav class="steps"><a href="#agent"><b>1</b>Agent</a><a href="#audit"><b>2</b>Audit</a><a href="#fix"><b>3</b>Fix</a></nav>
+  <div class="controls">
+    <select id="runPicker" aria-label="Saved run"></select>
+    <button class="primary" id="liveBtn">Run live…</button>
+  </div>
+</header>
+
+<main id="app"><div class="empty">Loading saved runs…</div></main>
+
+<dialog id="liveDialog">
+  <h3 style="margin-top:0">Run a live drill</h3>
+  <p class="lede" style="margin-bottom:12px">Audits the agent on Nemotron through Token Factory, has Nemotron write fixes, and re-audits them.
+     Takes about 5 to 10 minutes and uses your Token Factory credits. Requires <span class="mono">API_KEY</span> in <span class="mono">.env</span>.</p>
+  <div class="controls" style="margin-bottom:12px">
+    <select id="liveAgent"></select>
+    <button class="primary" id="liveStart">Start</button>
+    <button id="liveClose">Close</button>
+  </div>
+  <pre class="log" id="liveLog">Not started.</pre>
+</dialog>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pill = (p) => p === null || p === undefined ? '<span class="pill na">N/A</span>'
+  : p ? '<span class="pill pass">Pass</span>' : '<span class="pill fail">Fail</span>';
+const OUTCOME = {ok: "answered", mock: "answered", injected_error: "fault injected", upstream_error: "provider rejected the request",
+                 corrupted: "garbled tool call injected", circuit_open: "blocked", killed: "killed"};
+
+function timeline(run) {
+  if (!run || !run.timeline) return "";
+  return '<div class="tl">' + run.timeline.map((t) =>
+    `<i class="${esc(t.outcome)}" title="${esc(OUTCOME[t.outcome] || t.outcome)}${t.status ? " (" + t.status + ")" : ""}"></i>`).join("") + "</div>";
+}
+
+function actionText(a) {
+  try { const args = JSON.parse(a.arguments); return args.summary || args.reason || a.arguments; }
+  catch (e) {  // arguments may be cut off: pull the readable field out of the partial JSON
+    const m = /"(summary|reason)"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(a.arguments || "");
+    return m ? m[2] : a.arguments;
+  }
+}
+
+function shortVerdict(v) {  // "Crashed ...: langchain_openai...OpenAIAPIError: Error code: 500 - {...}" -> "... OpenAIAPIError (500)"
+  return String(v || "").replace(/:\s*(?:[\w.]+\.)?(\w+(?:Error|Exception)):\s*Error code:\s*(\d+).*$/s, ": $1 ($2)")
+                        .replace(/:\s*(?:[\w.]+\.)?(\w+(?:Error|Exception)):\s*(.{0,90}).*$/s, ": $1: $2");
+}
+
+function lineageChanges(run) {
+  const groups = [];
+  for (const rnd of run.rounds || []) for (const c of rnd)
+    if (c.candidate === run.best.candidate && c.round <= run.best.round && (c.changes || []).length)
+      groups.push({round: c.round, changes: c.changes});
+  return groups;
+}
+
+function scen(audit, id) { return (audit.scenarios || []).find((s) => s.id === id) || {}; }
+
+function headline(audit) {
+  const failed = audit.failed || [];
+  if (!failed.length) return "Passes every drill.";
+  return `Fails ${failed.length} of ${failed.length + (audit.passed || []).length} drills: ${failed.join(", ").toLowerCase()}.`;
+}
+
+function bestCandidate(run) {
+  if (!run.best) return null;
+  for (const rnd of run.rounds || []) for (const c of rnd)
+    if (c.round === run.best.round && c.candidate === run.best.candidate) return c;
+  return null;
+}
+
+function diffHtml(diff) {
+  return (diff || "").split("\n").map((l) => {
+    const cls = l.startsWith("@@") ? "hunk" : (l.startsWith("+") && !l.startsWith("+++")) ? "add"
+              : (l.startsWith("-") && !l.startsWith("---")) ? "del" : "";
+    return cls ? `<span class="${cls}">${esc(l)}</span>` : esc(l);
+  }).join("\n");
+}
+
+function duplicateCard(audit, after) {
+  const s = scen(audit, "crash_after_action");
+  const pair = (s.pairs || []).find((p) => p.triggered) || (s.pairs || [])[0];
+  if (!pair) return "";
+  const first = pair.crash_run.actions.find((a) => a.executed);
+  const again = pair.rerun.actions[0];
+  if (!first) return "";
+  const ok = again && !again.executed;
+  const title = after ? "After the fix: crash, then rerun" : "Before: crash, then rerun";
+  const second = !again ? "<p>The rerun did not try the action.</p>"
+    : ok ? `<p>On the rerun the agent tried again and its own check stopped it:</p><blockquote class="mono">${esc(again.result)}</blockquote>`
+         : `<p>The rerun performed it <b>again</b>, worded differently:</p><blockquote>${esc(actionText(again))}</blockquote>`;
+  return `<div class="card dup ${ok ? "ok" : ""}">
+    <div class="label">${title}</div>
+    <p style="margin:4px 0 0">The agent performed its action, then the provider went down and it crashed:</p>
+    <blockquote>${esc(actionText(first))}</blockquote>
+    ${second}
+    <p class="sim" style="margin:10px 0 0;color:var(--muted);font-size:13px">${esc(s.verdict || "")}</p>
+  </div>`;
+}
+
+function render(run) {
+  const before = run.before, meta = run.meta || {}, best = bestCandidate(run), after = best && best.audit;
+  const cmp = run.comparison || {};
+  const tokens = (a) => a ? a.tokens.prompt + a.tokens.completion : 0;
+  const genTokens = (run.rounds || []).flat().reduce((n, c) => n + (c.tokens ? c.tokens.prompt + c.tokens.completion : 0), 0);
+  const allRuns = (run.rounds || []).flat().filter((c) => c.audit).reduce((n, c) => n + tokens(c.audit), 0) + tokens(before);
+
+  const drillRows = (before.scenarios || []).map((b) => {
+    const a = after ? scen(after, b.id) : null;
+    const pairTl = (x) => { const p = (x.pairs || []).find((q) => q.triggered) || (x.pairs || [])[0];
+      return p ? `<div class="tlrow"><span>crash run</span>${timeline(p.crash_run)}</div><div class="tlrow"><span>rerun</span>${timeline(p.rerun)}</div>` : ""; };
+    const tlB = b.runs ? timeline(b.runs[0]) : pairTl(b);
+    const tlA = a ? (a.runs ? timeline(a.runs[0]) : pairTl(a)) : "";
+    return `<tr>
+      <td style="width:28%"><b>${esc(b.name)}</b><div class="sim">${esc(b.simulates)}</div></td>
+      <td style="width:36%">${pill(b.passed)}<div class="verdict" title="${esc(b.verdict)}">${esc(shortVerdict(b.verdict))}</div>${tlB}</td>
+      <td style="width:36%">${a ? pill(a.passed) + `<div class="verdict" title="${esc(a.verdict)}">${esc(shortVerdict(a.verdict))}</div>${tlA}` : '<span class="sim">No fix yet</span>'}</td>
+    </tr>`;
+  }).join("");
+
+  const rounds = (run.rounds || []).map((rnd, i) => `<div class="round"><span class="r">Round ${i + 1}</span>${rnd.map((c) => {
+      const isBest = run.best && c.round === run.best.round && c.candidate === run.best.candidate;
+      if (!c.audit) return `<span class="cand bad" title="${esc(c.problem)}">Fix ${c.candidate}: rejected</span>`;
+      if (c.smoke_failed) return `<span class="cand bad" title="${esc(c.audit.scenarios[0].verdict)}">Fix ${c.candidate}: broke the normal run</span>`;
+      return `<span class="cand ${isBest ? "best" : ""}">Fix ${c.candidate}: ${c.audit.grade} (${c.audit.score})${isBest ? " ✓ chosen" : ""}</span>`;
+    }).join("")}</div>`).join("");
+
+  $("#app").innerHTML = `
+  <section id="agent">
+    <h2><span class="n">1</span>The agent</h2>
+    <p class="lede">A real agent, run unmodified. ResilienceGuard reroutes its calls to Token Factory through a proxy
+      that can misbehave on purpose, like a fire drill.</p>
+    <div class="grid g2">
+      <div class="card">
+        <div class="label">Agent</div>
+        <div style="font-size:18px;font-weight:600">${esc(meta.title || run.agent)}</div>
+        <p style="margin:6px 0 12px">${esc(meta.does || "")}</p>
+        <div class="label">Source</div><div class="mono">${meta.url ? `<a href="${esc(meta.url)}" target="_blank" rel="noopener">${esc(meta.source)}</a>` : esc(meta.source || "")}</div>
+      </div>
+      <div class="card">
+        <div class="label">Runs on</div><div class="mono">${esc(before.agent_model || "nvidia/nemotron-3-super-120b-a12b")} via Token Factory</div>
+        <div class="label" style="margin-top:12px">Framework</div><div>${esc(meta.framework || "")}</div>
+        <div class="label" style="margin-top:12px">Real-world action we watch</div><div class="mono">${esc(meta.action || before.action_tools.join(", "))}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="flow"><span class="node">Agent, unmodified</span><span class="arrow">→</span>
+        <span class="node proxy">ResilienceGuard proxy: outages · rate limits · garbled tool calls · crash after acting</span>
+        <span class="arrow">→</span><span class="node">Nebius Token Factory · Nemotron</span></div>
+    </div>
+  </section>
+
+  <section id="audit">
+    <h2><span class="n">2</span>The audit</h2>
+    <p class="lede">Six drills, each in a fresh copy of the agent with its own proxy. Every result below comes from the run itself:
+      exit codes, the proxy's call log, and the tool results the agent sent back.</p>
+    <div class="scoreline">
+      <div class="grade ${esc(before.grade)}">${esc(before.grade)}</div>
+      <div><div class="big">${esc(before.score)}/100 before the fix</div><div style="color:var(--muted)">${esc(headline(before))}</div></div>
+      ${after ? `<div style="margin-left:auto;display:flex;align-items:center;gap:18px"><div style="text-align:right"><div class="big">${esc(after.score)}/100 after</div><div style="color:var(--muted)">${esc(headline(after))}</div></div><div class="grade ${esc(after.grade)}">${esc(after.grade)}</div></div>` : ""}
+    </div>
+    <div class="card" style="padding:6px 14px">
+      <table><thead><tr><th>Drill</th><th>Before</th><th>After Nemotron's fix</th></tr></thead><tbody>${drillRows}</tbody></table>
+      <div class="legend">Each square is one call to the provider:
+        <span><span class="tl"><i class="ok"></i></span>answered</span>
+        <span><span class="tl"><i class="injected_error"></i></span>fault injected</span>
+        <span><span class="tl"><i class="corrupted"></i></span>garbled tool call</span>
+        <span><span class="tl"><i class="upstream_error"></i></span>provider rejected the request</span></div>
+    </div>
+    <div class="grid g2" style="margin-top:14px">${duplicateCard(before, false)}${after ? duplicateCard(after, true) : ""}</div>
+  </section>
+
+  <section id="fix">
+    <h2><span class="n">3</span>Nemotron's fix</h2>
+    <p class="lede">${esc(run.model)} read the agent's code, its input files and the audit evidence, wrote candidate fixes in parallel,
+      and each was re-audited. Candidates that still failed went back to Nemotron with their own error output.</p>
+    ${best ? `
+    <div class="grid g2">
+      <div class="card"><div class="label">How it got there</div><div class="rounds" style="margin-top:8px">${rounds}</div></div>
+      <div class="card"><div class="label">What changed, round by round (Nemotron's own words)</div>
+        ${lineageChanges(run).map((g) => `<div class="sim" style="margin-top:10px;font-weight:600">Round ${g.round}</div>
+          <ul class="changes">${g.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`).join("")}</div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <details><summary>The diff: ${esc(best.changed_lines)} lines in ${esc(run.file)}</summary><pre class="diff">${diffHtml(best.diff)}</pre></details>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="label">Before merging, a person should still check</div>
+      <ul class="checklist" style="margin:8px 0 0;padding-left:18px">
+        <li>The duplicate check's key: is it narrow enough? Keyed on the incident alone, later legitimate updates for the same incident would be skipped too.</li>
+        <li>Exactly-once needs the downstream system: a crash between acting and writing the ledger can still repeat the action.</li>
+        <li>Each drill ran once (the crash-and-rerun drill three times). A pass is evidence, not a guarantee.</li>
+      </ul>
+    </div>` : '<div class="card">No fix in this run.</div>'}
+  </section>
+
+  <section>
+    <div class="card"><div class="stats">
+      <div><b>${esc(before.audit_seconds)}s</b>first audit</div>
+      <div><b>${(run.rounds || []).length}</b>fix rounds</div>
+      <div><b>${allRuns.toLocaleString()}</b>tokens used by the agent across all drills</div>
+      <div><b>${genTokens.toLocaleString()}</b>tokens Nemotron used writing fixes</div>
+      <div><b>${esc(before.timestamp)}</b>run started</div>
+    </div></div>
+  </section>`;
+}
+
+async function loadRun(file) {
+  const r = await fetch("/api/runs/" + encodeURIComponent(file));
+  if (!r.ok) { $("#app").innerHTML = '<div class="empty">Could not load that run.</div>'; return; }
+  render(await r.json());
+}
+
+async function init() {
+  const runs = await (await fetch("/api/runs")).json();
+  const picker = $("#runPicker");
+  picker.innerHTML = runs.map((r) => `<option value="${esc(r.file)}">${esc(r.agent)} · ${esc(r.before)} → ${esc(r.after)} · ${esc(r.file.replace(".json", ""))}</option>`).join("");
+  picker.onchange = () => loadRun(picker.value);
+  if (runs.length) loadRun(runs[0].file);
+  else $("#app").innerHTML = '<div class="empty">No saved runs yet. Use “Run live…” to create one.</div>';
+
+  const agents = await (await fetch("/api/agents")).json();
+  $("#liveAgent").innerHTML = Object.entries(agents).map(([k, v]) => `<option value="${esc(k)}">${esc(v.title)}</option>`).join("");
+}
+
+let poller = null;
+$("#liveBtn").onclick = () => $("#liveDialog").showModal();
+$("#liveClose").onclick = () => $("#liveDialog").close();
+$("#liveStart").onclick = async () => {
+  const log = $("#liveLog");
+  const r = await fetch("/api/live", {method: "POST", headers: {"Content-Type": "application/json"},
+                                      body: JSON.stringify({agent: $("#liveAgent").value})});
+  const d = await r.json();
+  if (!r.ok) { log.textContent = d.error || "Could not start."; return; }
+  log.textContent = "Started…";
+  clearInterval(poller);
+  poller = setInterval(async () => {
+    const j = await (await fetch("/api/jobs/" + d.job)).json();
+    log.textContent = j.log.join("\n") || "Working…";
+    log.scrollTop = log.scrollHeight;
+    if (j.status !== "running") {
+      clearInterval(poller);
+      log.textContent += j.status === "done" ? "\n\nDone. Loading the new run…" : "\n\nFailed: " + j.error;
+      if (j.status === "done") { await init(); $("#runPicker").value = j.run; loadRun(j.run); }
+    }
+  }, 2000);
+};
+
+init();
+</script>
+</body>
+</html>

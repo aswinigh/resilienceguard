@@ -1,0 +1,9 @@
+# ResilienceGuard core (proxy, audit, Nemotron fixer, studio)
+openai>=1.40
+httpx>=0.27
+pydantic>=2.7
+# Needed to run the Nebius cookbook LangChain agents used in the demo
+langchain-openai>=0.3
+python-dotenv>=1.0
+# Tests
+pytest>=8

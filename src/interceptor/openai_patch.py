@@ -150,6 +150,50 @@ def _build_corrupted_response(fault: FaultRule) -> Any:
     )
 
 
+def _estimate_prompt_tokens(kwargs: dict[str, Any]) -> int:
+    """Rough request size in tokens (~4 chars/token over messages + tool schemas)."""
+    import json
+
+    payload = {"messages": kwargs.get("messages", []), "tools": kwargs.get("tools", [])}
+    try:
+        return max(1, len(json.dumps(payload, default=str)) // 4)
+    except Exception:
+        return 1
+
+
+def _build_mock_response(fault: FaultRule, stream: bool) -> Any:
+    """Canned successful completion standing in for a healthy upstream."""
+    from openai.types.chat import ChatCompletion, ChatCompletionChunk
+
+    now = int(time.time())
+    if stream:
+        def _gen() -> Iterator[Any]:
+            for i, word in enumerate(fault.response_content.split(" ")):
+                yield ChatCompletionChunk(
+                    id=f"mock-{now}",
+                    choices=[{
+                        "delta": {"content": word + " ", "role": "assistant" if i == 0 else None},
+                        "finish_reason": None,
+                        "index": 0,
+                    }],
+                    created=now,
+                    model="fault-injector-mock",
+                    object="chat.completion.chunk",
+                )
+        return _gen()
+    return ChatCompletion(
+        id=f"mock-{now}",
+        choices=[{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {"role": "assistant", "content": fault.response_content},
+        }],
+        created=now,
+        model="fault-injector-mock",
+        object="chat.completion",
+    )
+
+
 def _wrap_stream_drop(orig_stream: Any, fault: FaultRule) -> Iterator[Any]:
     """Wrap a synchronous stream generator and drop/raise mid-stream after N chunks."""
     from openai.types.chat import ChatCompletionChunk
@@ -223,15 +267,23 @@ async def _wrap_async_stream_drop(orig_stream: Any, fault: FaultRule) -> Any:
     raise _build_openai_error(fault)
 
 
+async def _async_iter(items: Any) -> Any:
+    for item in items:
+        yield item
+
+
 class OpenAIFaultInterceptor:
     """Intercepts OpenAI chat completions to inject simulated faults."""
 
     def __init__(
         self,
         profile: FaultProfile | FaultRule | dict[str, Any] | str | Path | None = None,
+        on_event: Any = None,
     ) -> None:
         self.profile: FaultProfile = _resolve_profile(profile)
+        self.on_event = on_event  # optional callback(event: str, info: dict)
         self._injected_count: int = 0
+        self._mock_count: int = 0
         self._is_patched: bool = False
         self._original_create: Any = None
         self._original_acreate: Any = None
@@ -256,64 +308,39 @@ class OpenAIFaultInterceptor:
         @functools.wraps(orig_create)
         def intercepted_create(completions_self: Any, *args: Any, **kwargs: Any) -> Any:
             target_url = _extract_target_url(completions_self)
-            fault = interceptor._match_fault("chat.completions.create", target_or_url=target_url)
-            if fault is not None:
-                fault.record_occurrence()
-                interceptor._injected_count += 1
-
+            fault = interceptor._select(target_url, kwargs)
+            if fault is not None and fault.action == "delay":
                 delay = fault.get_delay()
                 if delay > 0:
                     time.sleep(delay)
-
-                if fault.action == "delay":
-                    return orig_create(completions_self, *args, **kwargs)
-
-                if fault.action == "stream_drop" and kwargs.get("stream"):
-                    orig_s = None
-                    try:
-                        orig_s = orig_create(completions_self, *args, **kwargs)
-                    except Exception:
-                        pass
-                    return _wrap_stream_drop(orig_s, fault)
-
-                if fault.action == "corrupt":
-                    return _build_corrupted_response(fault)
-
-                raise _build_openai_error(fault)
-
-            return orig_create(completions_self, *args, **kwargs)
+                fault = interceptor._select(target_url, kwargs, after_delay=True)
+            elif fault is not None and fault.get_delay() > 0:
+                time.sleep(fault.get_delay())  # optional delay before the fault itself
+            if fault is None:
+                return orig_create(completions_self, *args, **kwargs)
+            return interceptor._apply(fault, kwargs)
 
         @functools.wraps(orig_acreate)
         async def intercepted_acreate(
             async_completions_self: Any, *args: Any, **kwargs: Any
         ) -> Any:
             target_url = _extract_target_url(async_completions_self)
-            fault = interceptor._match_fault("chat.completions.create", target_or_url=target_url)
-            if fault is not None:
-                fault.record_occurrence()
-                interceptor._injected_count += 1
-
+            fault = interceptor._select(target_url, kwargs)
+            if fault is not None and fault.action == "delay":
                 delay = fault.get_delay()
                 if delay > 0:
                     await asyncio.sleep(delay)
-
-                if fault.action == "delay":
-                    return await orig_acreate(async_completions_self, *args, **kwargs)
-
-                if fault.action == "stream_drop" and kwargs.get("stream"):
-                    orig_s = None
-                    try:
-                        orig_s = await orig_acreate(async_completions_self, *args, **kwargs)
-                    except Exception:
-                        pass
-                    return _wrap_async_stream_drop(orig_s, fault)
-
-                if fault.action == "corrupt":
-                    return _build_corrupted_response(fault)
-
-                raise _build_openai_error(fault)
-
-            return await orig_acreate(async_completions_self, *args, **kwargs)
+                fault = interceptor._select(target_url, kwargs, after_delay=True)
+            elif fault is not None and fault.get_delay() > 0:
+                await asyncio.sleep(fault.get_delay())
+            if fault is None:
+                return await orig_acreate(async_completions_self, *args, **kwargs)
+            result = interceptor._apply(fault, kwargs)
+            if fault.action == "stream_drop":
+                return _wrap_async_stream_drop(None, fault)
+            if fault.action == "mock_success" and kwargs.get("stream"):
+                return _async_iter(result)
+            return result
 
         Completions.create = intercepted_create
         AsyncCompletions.create = intercepted_acreate
@@ -345,6 +372,7 @@ class OpenAIFaultInterceptor:
     def reset_stats(self) -> None:
         """Reset injected fault counts and rule occurrence counters."""
         self._injected_count = 0
+        self._mock_count = 0
         if self.profile is not None:
             self.profile.reset()
 
@@ -352,21 +380,69 @@ class OpenAIFaultInterceptor:
         """Return the number of faults injected since instantiation or last reset."""
         return self._injected_count
 
+    def get_mock_count(self) -> int:
+        """Number of calls answered with a canned healthy response (action='mock_success')."""
+        return self._mock_count
+
+    def _emit(self, event: str, **info: Any) -> None:
+        if self.on_event is not None:
+            try:
+                self.on_event(event, info)
+            except Exception:
+                pass
+
+    def _select(
+        self, target_url: str | None, kwargs: dict[str, Any], after_delay: bool = False
+    ) -> FaultRule | None:
+        """Pick the rule for this call and record it.
+
+        stream_drop rules only apply to streaming calls; after a delay rule fires, matching
+        continues with the non-delay rules so latency can be combined with a response.
+        """
+        exclude: set[str] = set()
+        if not kwargs.get("stream"):
+            exclude.add("stream_drop")
+        if after_delay:
+            exclude.add("delay")
+        fault = self._match_fault("chat.completions.create", target_or_url=target_url, exclude_actions=exclude)
+        if fault is None:
+            return None
+        fault.record_occurrence()
+        tokens = _estimate_prompt_tokens(kwargs)
+        if fault.action == "mock_success":
+            self._mock_count += 1
+            self._emit("mock_response", prompt_tokens_est=tokens)
+        else:
+            self._injected_count += 1
+            self._emit("fault", action=fault.action, prompt_tokens_est=tokens)
+        return fault
+
+    def _apply(self, fault: FaultRule, kwargs: dict[str, Any]) -> Any:
+        """Produce the faulted result (or raise) for a non-delay rule (sync path)."""
+        if fault.action == "mock_success":
+            return _build_mock_response(fault, stream=bool(kwargs.get("stream")))
+        if fault.action == "stream_drop":
+            return _wrap_stream_drop(None, fault)
+        if fault.action == "corrupt":
+            return _build_corrupted_response(fault)
+        raise _build_openai_error(fault)
+
     def _match_fault(
-        self, endpoint: str, target_or_url: str | None = None
+        self,
+        endpoint: str,
+        target_or_url: str | None = None,
+        exclude_actions: set[str] | frozenset[str] = frozenset(),
     ) -> FaultRule | None:
         """Find matching fault rule for endpoint and target."""
         if not self.profile or not self.profile.enabled:
             return None
-        return (
-            self.profile.get_matching_fault(endpoint, target_or_url=target_or_url)
-            or self.profile.get_matching_fault(
-                f"openai.{endpoint}", target_or_url=target_or_url
+        for ep in (endpoint, f"openai.{endpoint}", "chat.completions"):
+            rule = self.profile.get_matching_fault(
+                ep, target_or_url=target_or_url, exclude_actions=exclude_actions
             )
-            or self.profile.get_matching_fault(
-                "chat.completions", target_or_url=target_or_url
-            )
-        )
+            if rule is not None:
+                return rule
+        return None
 
     def __enter__(self) -> OpenAIFaultInterceptor:
         self.patch()
@@ -402,9 +478,14 @@ def unpatch_openai() -> None:
 @contextmanager
 def intercept_openai(
     profile: FaultProfile | FaultRule | dict[str, Any] | str | Path | None = None,
+    on_event: Any = None,
 ) -> Iterator[OpenAIFaultInterceptor]:
-    """Context manager for temporarily intercepting OpenAI SDK calls."""
-    interceptor = OpenAIFaultInterceptor(profile)
+    """Context manager for temporarily injecting faults into OpenAI SDK calls.
+
+    This is the chaos-testing side: it *causes* failures. For protection see
+    ``src.guard.ResilienceGuard``.
+    """
+    interceptor = OpenAIFaultInterceptor(profile, on_event=on_event)
     interceptor.patch()
     try:
         yield interceptor

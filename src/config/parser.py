@@ -18,7 +18,9 @@ class FaultRule(BaseModel):
     """Configuration for an individual fault injection rule."""
 
     target: str = "openai"  # e.g., 'openai', 'nebius', 'nvidia', or '*'
-    action: str = "error"  # e.g., 'error', 'delay', 'stream_drop', 'corrupt'
+    # 'error', 'delay', 'stream_drop', 'corrupt', or 'mock_success' (canned healthy reply,
+    # used by audits so non-faulted calls never reach a real API)
+    action: str = "error"
     error_type: str = "APIConnectionError"
     status_code: int = 500
     message: str = "Simulated 500: API connection error"
@@ -30,6 +32,10 @@ class FaultRule(BaseModel):
     delay_max_seconds: float = 0.0
     stream_drop_after_chunks: int = 2
     corrupt_type: str = "malformed_json"  # e.g., 'malformed_json', 'truncated'
+    response_content: str = "Simulated healthy response."
+    # Proxy-only triggers: the rule stays dormant until the condition is met.
+    after_calls: int | None = None  # only from the (after_calls+1)-th chat call onwards
+    after_tool_call: str | None = None  # only once the model has requested this tool
     current_occurrences: int = 0
 
     @field_validator("endpoints", mode="before")
@@ -117,16 +123,22 @@ class FaultProfile(BaseModel):
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
 
     def get_matching_fault(
-        self, endpoint: str, target_or_url: str | None = None
+        self,
+        endpoint: str,
+        target_or_url: str | None = None,
+        exclude_actions: frozenset[str] | set[str] = frozenset(),
     ) -> FaultRule | None:
         """Find the first matching fault rule for the given endpoint and target.
 
         Checks if profile is enabled, checks endpoints & target match, and checks probability.
+        Rules whose action is in ``exclude_actions`` are skipped.
         """
         if not self.enabled:
             return None
 
         for fault in self.faults:
+            if fault.action in exclude_actions:
+                continue
             if fault.should_trigger(endpoint, target_or_url=target_or_url):
                 return fault
 

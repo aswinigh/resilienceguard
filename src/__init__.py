@@ -1,21 +1,13 @@
-"""Agent Resilience Fault Injection Package."""
+"""ResilienceGuard: fire drills for AI agents on Nebius Token Factory.
 
-from src.demo_agent import (
-    AgentState,
-    CircuitBreakerTrippedError,
-    create_demo_agent_graph,
-    run_demo_agent,
-    send_email,
-    web_search,
-)
-from src.providers import get_sponsor_client
+Main pieces:
+    src.proxy        fault-injection proxy in front of Token Factory (any framework, any language)
+    src.agent_audit  runs an unmodified agent through the proxy under each drill and scores it
+    src.fixer        Nemotron writes fixes; each is re-audited until it passes
+    src.guard        circuit breaker / kill switch (used by the proxy, usable in-process)
+    src.interceptor  in-process fault injection for the OpenAI Python SDK (library mode)
+"""
 
-__all__ = [
-    "AgentState",
-    "CircuitBreakerTrippedError",
-    "create_demo_agent_graph",
-    "get_sponsor_client",
-    "run_demo_agent",
-    "send_email",
-    "web_search",
-]
+from src.guard import CircuitOpenError, ResilienceGuard, RunawayHaltError
+
+__all__ = ["CircuitOpenError", "ResilienceGuard", "RunawayHaltError"]

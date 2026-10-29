@@ -10,8 +10,14 @@ import pytest
 import openai
 from src.config.parser import FaultProfile, FaultRule
 from src.interceptor.openai_patch import OpenAIFaultInterceptor, intercept_openai
-from src.providers import get_sponsor_client
-from src.demo_agent import web_search
+
+
+def get_sponsor_client(provider: str):
+    """Plain OpenAI clients pointed at each provider's base URL (no network calls are made)."""
+    urls = {"nebius": "https://api.tokenfactory.nebius.com/v1", "nvidia": "https://integrate.api.nvidia.com/v1",
+            "openai": None}
+    kwargs = {"api_key": "test-key", **({"base_url": urls[provider]} if urls[provider] else {})}
+    return openai.OpenAI(**kwargs), "nvidia/nemotron-3-super-120b-a12b"
 
 
 def test_target_provider_filtering_nebius():
@@ -142,31 +148,3 @@ def test_latency_jitter_delay():
     delays = [rule.get_delay() for _ in range(20)]
     for d in delays:
         assert 0.1 <= d <= 0.5
-
-
-def test_tavily_search_simulated_fallback():
-    """Verify web_search tool returns simulated string when no TAVILY_API_KEY is present."""
-    result = web_search("Nebius cloud GPU specs")
-    assert "Simulated search results for query: 'Nebius cloud GPU specs'" in result
-
-
-def test_tavily_search_mock_http(monkeypatch):
-    """Verify web_search tool formats Tavily results when API responds successfully."""
-    monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-mock-key")
-
-    class MockResponse:
-        status_code = 200
-        def json(self):
-            return {
-                "results": [
-                    {"title": "Nebius AI Studio", "content": "High-throughput GPU cluster"},
-                    {"title": "NVIDIA Nemotron", "content": "Open weights reasoning models"},
-                ]
-            }
-
-    import httpx
-    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: MockResponse())
-
-    result = web_search("Nebius and NVIDIA")
-    assert "Nebius AI Studio: High-throughput GPU cluster" in result
-    assert "NVIDIA Nemotron: Open weights reasoning models" in result

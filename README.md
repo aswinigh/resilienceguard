@@ -1,162 +1,195 @@
-# 🛡️ ResilienceGuard
+# ResilienceGuard
 
-> **Automated Chaos Testing, Vulnerability Profiling & Self-Healing for AI Agents on Nebius Token Factory and NVIDIA Nemotron**
+**Fire drills for AI agents on Nebius Token Factory.** Point it at a real agent, unmodified. It makes
+the provider misbehave on purpose, shows exactly how the agent breaks, has **NVIDIA Nemotron** write
+the fix, and re-runs the drills to prove the fix works.
 
-Built for the **Nebius x NVIDIA Global AI Hackathon**  
-*Track: Apps & Agentic AI / Coding and Agentic Engineering*
+Built for the Nebius x NVIDIA Global AI Hackathon, Coding and Agentic Engineering track.
 
-[![Tests](https://img.shields.io/badge/pytest-57%20passed-brightgreen.svg)]()
-[![Model](https://img.shields.io/badge/Model-NVIDIA%20Nemotron--70B-76B900.svg)](https://build.nvidia.com)
-[![Cloud](https://img.shields.io/badge/Inference-Nebius%20Token%20Factory-purple.svg)](https://studio.nebius.ai)
-[![Framework](https://img.shields.io/badge/Agent-LangGraph-blue.svg)](https://langchain-ai.github.io/langgraph/)
+![The studio: a real run, F to A](docs/studio.png)
 
 ---
 
-## ⚡ The 30-Second "Aha!" Moment
+## What we found in real agents
+
+We ran two agents from Nebius's own [Token Factory cookbook](https://github.com/nebius/token-factory-cookbook)
+(`agents/langchain/incident-response-agent` and `customer-support-resolution-agent`), unmodified, on
+`nvidia/nemotron-3-super-120b-a12b`, and made the provider misbehave:
+
+1. **They give up almost immediately.** A brief outage or three "too busy" (429) answers in a row kill the
+   run in about 3 seconds with a stack trace. The OpenAI SDK's two silent retries are all the agent has.
+2. **One garbled tool call is unrecoverable.** LangChain keeps the broken call in the conversation, Token
+   Factory then rejects the whole conversation with a 400, and every later call fails the same way.
+3. **A rerun repeats the agent's action.** If the agent crashes after drafting its status update and the
+   task is rerun (as a person or job queue would), it drafts a second, differently worded update.
+   Incident-response agent: **6 of 6** crash-and-rerun pairs repeated the action. Customer-support agent:
+   not observed (0 of 2); Nemotron only chose to draft a refund in about half the runs.
+
+What we expected and did **not** find: endless retry loops burning money. The SDK caps retries, so a full
+outage stops the agent after 3 calls.
+
+Both cookbook action tools are *draft-only* by design ("does not execute the action"), so nothing real was
+sent. The finding is the pattern: wire that tool to a real status page or refund API and a rerun posts
+twice.
+
+### Then Nemotron fixed it
+
+The incident-response agent, end to end (saved in [`runs/`](runs/), viewable in the studio):
+
+| Drill | Before | After Nemotron's fix |
+|---|---|---|
+| Normal run | Pass | Pass |
+| Brief provider outage (4 x 500, then recovers) | **Crashed after 3 calls** | Finished (9 calls) |
+| Rate-limit burst (4 x 429, then recovers) | **Crashed after 3 calls** | Finished (9 calls) |
+| Garbled tool call | **Crashed: provider 400** | Finished |
+| Crash after acting, then rerun | **Acted again, 3 of 3** | "skipped: already done", 3 of 3 |
+| Sustained outage | Stopped after 3 calls | Stopped after 7 calls |
+| **Grade** | **F (10/100)** | **A (100/100)** |
+
+It took three rounds. In round 1 both candidates fixed 3 of the 4 problems (grade B). The garbled tool call
+took two more rounds, each driven by the previous round's error output. The winning fix, in Nemotron's
+words: a retry budget with backoff (`max_retries=6`, `timeout=60`); detecting `invalid_tool_calls`, keeping
+them out of the history and asking the model to retry; and an idempotency ledger keyed on the alert's `id`.
+
+What a reviewer should still check, and the studio says so: the ledger key is the incident alone, so later
+legitimate updates for the same incident would also be skipped (key on incident + update phase instead);
+and exactly-once ultimately needs the downstream system to accept an idempotency key.
+
+---
+
+## How it works
 
 ```mermaid
 flowchart LR
-    A["Agent on Nebius Token Factory\n(NVIDIA Nemotron-70B)"] --> B{"Upstream 500 Outage"}
-    B -->|Without Protection| C["💥 Runaway Loop\n12+ Retries • 15,000+ Tokens Burned\nSilent Budget Exhaustion"]
-    B -->|With ResilienceGuard| D["🛡️ Circuit Breaker Trips\nCapped at 3 Retries • 0 Runaway Cost\nSafe State Transition & Diagnostic Report"]
+    A["Your agent, unmodified<br/>(any framework)"] -->|chat completions| P["ResilienceGuard proxy<br/>faults · call log · real token usage"]
+    P -->|forwards| T["Nebius Token Factory<br/>Nemotron"]
+    P -.->|evidence| AU["Audit: 6 drills, scored"]
+    AU --> F["Nemotron fixer<br/>candidate patches"]
+    F -->|patched copy| AU
 ```
 
-Every developer building autonomous agents lives in fear of **silent runaway retry loops**. When an upstream inference API drops or encounters a transient 500, naive agents retry indefinitely, burning thousands of tokens and budget dollars overnight.
+- **The proxy** (`src/proxy.py`) speaks the OpenAI-compatible API in front of Token Factory. For each call it
+  can return 500/503/429, add latency, drop a stream mid-way, truncate tool-call arguments, or stay dormant
+  until a condition is met (for example "after the model asks for `draft_status_update`"). It logs every
+  call with the real token usage and the tool results the agent sends back. It can hold the real API key
+  so agents only see a dummy one, and has a circuit breaker and a kill switch (`POST /rg/kill`).
+- **No agent changes.** Python agents are rerouted by a startup shim (`src/rg_shim/sitecustomize.py`) that
+  redirects requests bound for Token Factory's hostname, covering the OpenAI SDK (which uses `httpx2`),
+  LangChain, `ChatNebius` and LiteLLM. Agents in other languages can point their base URL at the proxy.
+- **The audit** (`src/agent_audit.py`) runs six drills in parallel, each in a fresh copy of the agent's
+  folder with its own proxy:
 
-**ResilienceGuard** solves this in two steps:
-1. **Audits your agent** by subjecting it to real-world cloud disruptions (500 outages, mid-stream SSE drops, cold-start latency jitter, schema corruption).
-2. **Heals your agent** using a 2-line drop-in SDK circuit-breaker wrapper that caps retries, isolates failures, and prevents 100% of runaway token burn.
+  | Drill | Simulates | Passes if |
+  |---|---|---|
+  | Normal run | nothing goes wrong | finishes with an answer |
+  | Brief provider outage | 4 server errors, then recovery | waits it out and finishes |
+  | Rate-limit burst | 4 x 429 "retry in 1s", then recovery | waits it out and finishes |
+  | Garbled tool call | one tool call with broken JSON | recovers and finishes |
+  | Crash after acting, then rerun | acts, crashes, task rerun (3 tries) | the action isn't performed twice |
+  | Sustained outage | every call fails | stops within 10 calls |
 
----
+  "Finished" means exit code 0 *and* an answer: an agent that exits cleanly with no output is reported as a
+  silent failure. A repeated action means the tool actually ran twice, judged from the tool results the
+  agent sent back, so a fixed agent that requests the action but skips it ("already done") passes.
+- **The fixer** (`src/fixer.py`) gives Nemotron the agent's source, its small input files, the audit
+  evidence and a short resilience playbook. It writes candidate fixes in parallel; each goes into a fresh
+  copy (the original is never touched), must compile and pass a normal run, then gets the full audit.
+  Candidates that still fail go back to Nemotron with their own error output, for up to 3 rounds.
+- **The studio** (`app.py`, `studio/index.html`) shows saved runs as Agent, Audit, Fix, and can start a
+  live run. Standard library server, no external page dependencies.
 
-## 📊 Before vs. After Executive Scorecard
+## Built with Nebius Token Factory and NVIDIA Nemotron
 
-| Metric | Baseline Agent (Unprotected) | With ResilienceGuard (Protected) | Impact |
-| :--- | :--- | :--- | :--- |
-| **Resilience Grade** | **F (28 / 100)** 🔴 | **A+ (98 / 100)** 🟢 | **+70 Points** |
-| **Infinite Loop Vulnerability** | ⚠️ High (12+ runaway retries) | 🛡️ Zero (Capped at 3 retries) | **Loop-Free** |
-| **Token Waste per Outage** | ~15,000 tokens ($0.12/incident) | 0 runaway tokens (11,250 saved) | **100% Budget Capped** |
-| **Halt Behavior** | Hangs indefinitely (18.4s) | Clean circuit break (<1.5s) | **Predictable Failure** |
-| **Mid-Stream SSE Token Drop** | Unhandled Process Crash | Safely Trapped & Isolated | **Crash-Resilient** |
-| **Tool Payload Corruption** | Tool Node Crashes Agent | Protocol Error Contained | **State Protected** |
+- **Inference:** all agent runs and all fixes go through Nebius Token Factory
+  (`https://api.tokenfactory.nebius.com/v1`).
+- **Nemotron, twice:** the audited agents run on `nvidia/nemotron-3-super-120b-a12b`, and the same model
+  writes and repairs the fixes. The demo run used about 69k tokens for the fixes and about 520k tokens of
+  agent traffic across all drills (before and every candidate).
+- **Token Factory Sandboxes:** the natural home for this, with VM isolation for untrusted agent code and
+  checkpoint/branch to fork one branch per drill and per candidate fix. Our project's Sandboxes access is
+  still pending activation, so candidates currently run in local copies; the fixer is structured so each
+  candidate is an independent workspace.
 
----
-
-## 🚀 Quickstart & Interactive Studio
-
-### 1. Launch the Interactive Resilience Studio (Web UI)
-Experience the full audit and live Before vs. After comparison in your browser with **zero external dependencies**:
+## Quickstart
 
 ```bash
-# Run the studio web application
-python app.py
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+echo 'API_KEY=<your Token Factory key>' > .env      # .env is gitignored
+
+.venv/bin/python scripts/check_tokenfactory.py      # reachability, Nemotron models, one call through the proxy
+.venv/bin/python app.py                             # studio at http://localhost:8000 (saved runs, or "Run live…")
 ```
-Open **`http://localhost:8000`** in your browser.
 
-- Click **⚡ Run 30-Second Chaos Audit** to watch the vulnerability profiler run.
-- Select between **Nebius Token Factory**, **NVIDIA NIM**, or standard OpenAI endpoints.
-- Download the generated Diagnostic Report (`.md`).
-
-### 2. Run the Command-Line Demo
-Prefer terminal telemetry? Run the CLI demo:
+Audit and fix a cookbook agent from the command line (clones the cookbook into `.rg_targets/` on first use):
 
 ```bash
-# Run scenarios on Nebius Token Factory (NVIDIA Nemotron-70B)
-python demo.py --provider nebius
-
-# Run scenarios on NVIDIA NIM
-python demo.py --provider nvidia
+.venv/bin/python -m src.agent_audit --cookbook incident_response --out audit_incident.json
+.venv/bin/python -m src.fixer --cookbook incident_response --audit audit_incident.json --out fix_incident.json
 ```
 
-### 3. Run the Full Test Suite
-Verify all 57 automated unit and integration tests:
+Audit your own agent: give its folder, its command, and the tools that have real-world effects:
 
 ```bash
-pytest -v
+.venv/bin/python -m src.agent_audit --workdir path/to/agent --cmd "python main.py" \
+    --action-tool send_refund --action-tool post_status --out audit.json
 ```
 
----
+Use the proxy on its own (`fault_profile.json` is an example profile):
 
-## 🛠️ How to Protect Any Agent (2-Line Drop-in)
-
-Agent builders don't need to rewrite their agents. Simply wrap calls with `ResilienceGuard`:
-
-```python
-from src.interceptor import intercept_openai
-from src.config import FaultProfile
-
-# Apply ResilienceGuard to any OpenAI or Nebius agent call:
-with intercept_openai(profile=FaultProfile()):
-    response = your_agent.run(prompt)
+```bash
+.venv/bin/python -m src.proxy --port 8787 --profile fault_profile.json --guard --inject-key-from-env API_KEY
+export OPENAI_BASE_URL=http://localhost:8787/v1     # then run any agent
 ```
 
----
+> Auditing runs the agent's code on your machine (each drill in a temporary copy of its folder). Only audit
+> agents you trust until Sandboxes isolation is in place. The studio listens on 127.0.0.1 and only accepts
+> live-run requests from its own page.
 
-## 🏗️ Architecture & Technology Stack
+## How it compares
 
-```mermaid
-flowchart TD
-    subgraph Sponsors ["Hackathon Sponsors & Tools"]
-        Nebius["Nebius Token Factory\napi.studio.nebius.ai/v1"]
-        Nemotron["NVIDIA Nemotron-70B\nnvidia/Llama-3.1-Nemotron-70B-Instruct-HF"]
-        NvidiaNIM["NVIDIA NIM\nintegrate.api.nvidia.com/v1"]
-        Tavily["Tavily Search API\napi.tavily.com/search"]
-    end
+| | Finds the problem | Survives brief outages | Fixes garbled-call poisoning and repeated actions | Proves the fix |
+|---|---|---|---|---|
+| [agent-chaos](https://github.com/deepankarm/agent-chaos), [AgentBreak](https://pypi.org/project/agentbreak) | Yes | You fix it | You fix it | No |
+| LLM gateways (Portkey, LiteLLM) | No | Yes, by retrying | No, that lives in the agent's code | No |
+| **ResilienceGuard** | Yes, on unmodified agents | Yes, via the fix | Yes, Nemotron changes the agent's code | Yes, re-audit |
 
-    subgraph ControlPlane ["Control Plane (src/config)"]
-        Parser["FaultProfile & FaultRule\ntarget: 'nebius' | 'nvidia' | '*'"]
-    end
+Fault injection itself isn't new. The bet is the closed loop: break the agent, fix it, prove the fix,
+including the failures a gateway can't reach.
 
-    subgraph Interceptor ["SDK Interceptor (src/interceptor)"]
-        Patch["OpenAIFaultInterceptor\n(Monkey-patches Completions & AsyncCompletions)"]
-        F1["500 Error Injection"]
-        F2["Mid-Stream SSE Drop"]
-        F3["GPU Latency Jitter"]
-        F4["Schema Corruption"]
-    end
+## Limitations
 
-    subgraph Agent ["LangGraph Resilient Agent (src/demo_agent)"]
-        Node["Agent Node (step_llm)"]
-        Tools["Tool Node (web_search via Tavily / send_email)"]
-        CB["Circuit Breaker Node\n(trips after 3 consecutive failures)"]
-    end
+- Small samples: each drill runs once, the crash-and-rerun drill three times. A pass is evidence, not a
+  guarantee, and model behaviour varies run to run.
+- The duplicate-action finding is confirmed for the incident-response agent only.
+- The cookbook tools are draft-only; the harm described assumes they are wired to real actions.
+- The fixer edits one file and relies on the agent's behaviour being checkable by exit code and output.
+- The Python shim covers `httpx` and `httpx2` clients; other HTTP stacks need the base URL set to the proxy.
+- Sandboxes integration is pending access; until then candidates run locally.
 
-    ControlPlane --> Interceptor
-    Agent --> Interceptor
-    Interceptor -->|Matches Rule| F1 & F2 & F3 & F4
-    Interceptor -->|No Fault| Nebius & NvidiaNIM
-    Nebius -.-> Nemotron
-    F1 & F2 -->|Trapped| Node
-    Node -->|Retries < 3| Node
-    Node -->|Retries >= 3| CB
-    CB --> EndNode((END))
-    Tools --> Tavily
+## Reproduce the research
+
+```bash
+.venv/bin/pip install langchain-openai python-dotenv
+.venv/bin/python scripts/spike_real_agents.py         # findings 1 and 2: 2 agents x 6 scenarios
+.venv/bin/python scripts/spike_duplicate_actions.py   # finding 3: crash-after-action + rerun pairs
 ```
 
-1. **Inference Engine**:
-   - **Nebius Token Factory**: Powers high-throughput inference for `nvidia/Llama-3.1-Nemotron-70B-Instruct-HF`.
-   - **NVIDIA NIM**: Powers microservice endpoints for `nvidia/llama-3.1-nemotron-70b-instruct`.
-2. **SDK-Level Interception Layer** (`src/interceptor/`):
-   - Non-invasive monkey-patching of `openai.resources.chat.completions.Completions` and `AsyncCompletions`.
-   - Targeted provider matching based on `client.base_url` (`nebius`, `nvidia`, `openai`).
-3. **Resilience & StateGraph Runtime** (`src/demo_agent.py`):
-   - Built on **LangGraph** with explicit circuit-breaker states (`circuit_breaker_node`), preventing infinite loops and emitting telemetry.
-4. **Partner Retrieval**:
-   - Integrated with **Tavily Search API** for real-time web retrieval in agent workflows.
+## Project layout
 
----
+```
+app.py                  studio server          studio/index.html   studio page
+src/proxy.py            fault-injection proxy  src/rg_shim/        no-code-change launcher shim
+src/agent_audit.py      the six drills         src/fixer.py        Nemotron fix loop
+src/guard.py            circuit breaker        src/config/         fault rules
+src/interceptor/        in-process fault injection for the OpenAI Python SDK (library mode)
+runs/                   saved real runs        scripts/            setup check, research spikes, save_run
+tests/                  71 tests (fake model + stand-in agents, no network needed)
+```
 
-## ⚠️ Documented Limitations (Engineering Rigor)
+```bash
+.venv/bin/python -m pytest -q
+```
 
-To maintain transparency and rigor, we publish our current architectural boundaries:
+## License
 
-1. **Process-Local Scope**: Current interception operates at the Python SDK client process level. It is optimized for single-worker agent executors, notebooks, and microservices.
-2. **In-Memory Circuit State**: Breaker state is currently maintained in-memory per process. Distributed multi-worker agent meshes will require a Redis/Postgres-backed state store.
-3. **HTTP/SSE Focus**: Currently targets REST and SSE streaming endpoints. Native gRPC protocol interception for raw Triton pipelines is on the future roadmap.
-
----
-
-## 🔮 What's Next
-- **Dynamic Cross-Provider Failover**: Automatic hot-failover from Nebius to NVIDIA NIM upon circuit break.
-- **Distributed Redis State**: Multi-agent shared circuit-breaker state across Kubernetes pods.
-- **Triton C++ Sidecar**: Low-level eBPF/sidecar packet injection for infrastructure-level chaos testing.
+MIT, see [LICENSE](LICENSE).
