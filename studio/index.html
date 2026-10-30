@@ -98,6 +98,21 @@
   pre.log { font: 12px/1.45 var(--mono); background: var(--ink); color: #e9e6df; border-radius: 8px; padding: 12px;
             height: 320px; overflow: auto; white-space: pre-wrap; }
   .checklist li { margin-bottom: 6px; }
+  .hero { margin-bottom: 48px; }
+  .hero h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .hero .sub { color: var(--muted); margin: 0 0 22px; max-width: 820px; }
+  .loop { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr; align-items: stretch; gap: 0; }
+  .stage { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+  .stage .k { font: 600 12px/1 var(--mono); color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+  .stage .big { font: 700 34px/1.1 var(--sans); margin: 10px 0 6px; letter-spacing: -0.02em; }
+  .stage .big.fail { color: var(--fail); } .stage .big.pass { color: var(--pass); }
+  .stage .d { font-size: 13px; color: var(--muted); }
+  .loop .arr { display: grid; place-items: center; color: var(--muted); font-size: 22px; padding: 0 8px; }
+  .verdictline { margin-top: 14px; font-size: 14px; padding: 12px 16px; border-radius: 10px; background: var(--card);
+                 border: 1px solid var(--line); }
+  .verdictline b.f { color: var(--fail); } .verdictline b.p { color: var(--pass); }
+  @media (max-width: 860px) { .loop { grid-template-columns: 1fr; } .loop .arr { transform: rotate(90deg); padding: 4px; } }
+  svg.tree text { font-family: var(--sans); }
 </style>
 </head>
 <body>
@@ -158,6 +173,76 @@ function lineageChanges(run) {
     if (c.candidate === run.best.candidate && c.round <= run.best.round && (c.changes || []).length)
       groups.push({round: c.round, changes: c.changes});
   return groups;
+}
+
+const PLAIN = {baseline: "fails even a normal run", brief_outage: "crashes on a brief outage",
+  rate_limit: "crashes on a rate-limit burst", malformed_tool_call: "one garbled tool call is fatal",
+  crash_after_action: "repeats its action when rerun", sustained_outage: "doesn't stop during a sustained outage"};
+
+function heroHtml(run, before, after) {
+  const meta = run.meta || {};
+  const cands = (run.rounds || []).flat();
+  const audited = cands.filter((c) => c.audit);
+  const failedIds = (before.scenarios || []).filter((s) => s.passed === false && s.weight !== undefined).map((s) => s.id);
+  const drills = (before.scenarios || []).length;
+  const vms = before.sandbox ? 1 + audited.filter((c) => c.sandbox || (c.audit && c.audit.sandbox)).length : 0;
+  const model = (run.model || "").split("/").pop();
+  const found = failedIds.map((id) => PLAIN[id] || id);
+  return `<section class="hero">
+    <h1>Break it. Fix it. Prove it.</h1>
+    <p class="sub">The ${esc((meta.title || run.agent).toLowerCase())} from the ${esc((meta.source || "").split(":")[0] || "its repository")}, run unmodified on Nebius Token Factory.
+      ResilienceGuard made the provider misbehave on purpose, Nemotron rewrote the agent, and the same drills proved the fix.</p>
+    <div class="loop">
+      <div class="stage"><div class="k">1 · Break</div><div class="big fail">${failedIds.length} failure${failedIds.length === 1 ? "" : "s"}</div>
+        <div class="d">${drills} drills on real Token Factory traffic: outages, rate limits, a garbled tool call, a crash after acting. Grade <b>${esc(before.grade)}</b> (${esc(before.score)}/100).</div></div>
+      <div class="arr">→</div>
+      <div class="stage"><div class="k">2 · Fix</div><div class="big">${cands.length} fixes</div>
+        <div class="d">${esc(model)} read the code and the evidence and wrote ${cands.length} candidate fixes over ${(run.rounds || []).length} rounds, repairing its own mistakes from their error output.</div></div>
+      <div class="arr">→</div>
+      <div class="stage"><div class="k">3 · Prove</div><div class="big ${after && after.grade === "A" ? "pass" : ""}">${after ? esc(after.grade) + " " + esc(after.score) : "–"}</div>
+        <div class="d">${after ? `The same ${drills} drills, re-run on the chosen fix: ${(after.passed || []).length + (after.baseline_ok ? 1 : 0)} of ${drills} pass.` : "No fix passed yet."}</div></div>
+      <div class="arr">→</div>
+      <div class="stage"><div class="k">4 · Isolate</div><div class="big">${vms ? vms + " microVMs" : "Local"}</div>
+        <div class="d">${vms ? "Every audit ran in its own Token Factory Sandboxes microVM; each fix was a branch of one agent checkpoint." : "This run used local copies of the agent. Use --sandbox to run every audit in a Token Factory microVM."}</div></div>
+    </div>
+    ${found.length ? `<div class="verdictline"><b class="f">Found:</b> ${esc(found.join("; "))}. ${after && after.grade === "A" ? '<b class="p">Fixed and proven.</b>' : ""}</div>` : ""}
+  </section>`;
+}
+
+function treeSvg(run) {
+  const rounds = run.rounds || [];
+  if (!rounds.length) return "";
+  const nCand = Math.max(...rounds.map((r) => Math.max(...r.map((c) => c.candidate))));
+  const colW = 210, rowH = 74, x0 = 20, y0 = 34, nodeW = 168, nodeH = 50;
+  const W = x0 + colW * (rounds.length + 1), H = y0 + rowH * nCand + 10;
+  const rootY = y0 + (rowH * nCand) / 2 - nodeH / 2;
+  const isBest = (c) => run.best && c.round === run.best.round && c.candidate === run.best.candidate;
+  const color = (c) => !c.audit || c.smoke_failed ? "var(--fail)" : c.audit.grade === "A" ? "var(--pass)" : c.audit.grade === "B" ? "var(--warn)" : "var(--fail)";
+  const sb = run.before && run.before.sandbox;
+  let out = `<svg class="tree" viewBox="0 0 ${W} ${H}" width="${W}" style="max-width:100%;height:auto" role="img" aria-label="Fix attempts as branches">`;
+  out += `<text x="${x0}" y="16" font-size="11" fill="var(--muted)">${sb ? "AGENT CHECKPOINT" : "ORIGINAL AGENT"}</text>`;
+  rounds.forEach((r, i) => { out += `<text x="${x0 + colW * (i + 1)}" y="16" font-size="11" fill="var(--muted)">ROUND ${i + 1}${i ? " · REPAIR" : " · FROM EVIDENCE"}</text>`; });
+  const pos = {};
+  rounds.forEach((r, i) => r.forEach((c) => { pos[`${c.round}-${c.candidate}`] = {x: x0 + colW * (i + 1), y: y0 + rowH * (c.candidate - 1)}; }));
+  rounds.forEach((r, i) => r.forEach((c) => {
+    const p = pos[`${c.round}-${c.candidate}`];
+    const from = i === 0 ? {x: x0, y: rootY} : (pos[`${c.round - 1}-${c.candidate}`] || {x: x0, y: rootY});
+    const x1 = from.x + nodeW, y1 = from.y + nodeH / 2, x2 = p.x, y2 = p.y + nodeH / 2, mx = (x1 + x2) / 2;
+    out += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="${isBest(c) ? "var(--pass)" : "var(--line)"}" stroke-width="${isBest(c) ? 2.5 : 1.5}"/>`;
+  }));
+  out += `<rect x="${x0}" y="${rootY}" width="${nodeW}" height="${nodeH}" rx="10" fill="var(--paper)" stroke="var(--ink)"/>
+    <text x="${x0 + 12}" y="${rootY + 21}" font-size="13" font-weight="600" fill="var(--ink)">${esc(run.before.grade)} ${esc(run.before.score)} · as written</text>
+    <text x="${x0 + 12}" y="${rootY + 38}" font-size="11" fill="var(--muted)" font-family="var(--mono)">${sb ? esc(String(sb.agent_checkpoint).slice(0, 8)) + "…" : "local copy"}</text>`;
+  rounds.forEach((r) => r.forEach((c) => {
+    const p = pos[`${c.round}-${c.candidate}`], best = isBest(c);
+    const label = !c.audit ? "rejected" : c.smoke_failed ? "broke normal run" : `${c.audit.grade} ${c.audit.score}`;
+    const vm = c.sandbox || (c.audit && c.audit.sandbox);
+    out += `<g><title>${esc((c.changes || []).join(" | ") || c.problem || "")}</title>
+      <rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="10" fill="${best ? "var(--pass-bg)" : "var(--card)"}" stroke="${color(c)}" stroke-width="${best ? 2.5 : 1.5}"/>
+      <text x="${p.x + 12}" y="${p.y + 21}" font-size="13" font-weight="600" fill="${color(c)}">Fix ${c.candidate} · ${esc(label)}${best ? "  ✓" : ""}</text>
+      <text x="${p.x + 12}" y="${p.y + 38}" font-size="11" fill="var(--muted)" font-family="var(--mono)">${vm && vm.result_image ? "microVM " + esc(String(vm.result_image).slice(0, 8)) + "…" : (c.changed_lines ? c.changed_lines + " lines changed" : "")}</text></g>`;
+  }));
+  return out + "</svg>";
 }
 
 function sandboxNote(before, after) {
@@ -239,7 +324,7 @@ function render(run) {
       return `<span class="cand ${isBest ? "best" : ""}">Fix ${c.candidate}: ${c.audit.grade} (${c.audit.score})${isBest ? " ✓ chosen" : ""}</span>`;
     }).join("")}</div>`).join("");
 
-  $("#app").innerHTML = `
+  $("#app").innerHTML = heroHtml(run, before, after) + `
   <section id="agent">
     <h2><span class="n">1</span>The agent</h2>
     <p class="lede">A real agent, run unmodified. ResilienceGuard reroutes its calls to Token Factory through a proxy
@@ -290,8 +375,9 @@ function render(run) {
     <p class="lede">${esc(run.model)} read the agent's code, its input files and the audit evidence, wrote candidate fixes in parallel,
       and each was re-audited. Candidates that still failed went back to Nemotron with their own error output.</p>
     ${best ? `
-    <div class="grid g2">
-      <div class="card"><div class="label">How it got there</div><div class="rounds" style="margin-top:8px">${rounds}</div></div>
+    <div class="card" style="margin-bottom:14px"><div class="label">Every fix attempt is a branch${run.before.sandbox ? " of the same Sandboxes checkpoint" : ""}; repairs grow from the attempt before. Hover a node for its changes.</div>
+      <div style="margin-top:10px;overflow-x:auto">${treeSvg(run)}</div></div>
+    <div>
       <div class="card"><div class="label">What changed, round by round (Nemotron's own words)</div>
         ${lineageChanges(run).map((g) => `<div class="sim" style="margin-top:10px;font-weight:600">Round ${g.round}</div>
           <ul class="changes">${g.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`).join("")}</div>
@@ -302,7 +388,7 @@ function render(run) {
     <div class="card" style="margin-top:14px">
       <div class="label">Before merging, a person should still check</div>
       <ul class="checklist" style="margin:8px 0 0;padding-left:18px">
-        <li>The duplicate check's key: is it narrow enough? Keyed on the incident alone, later legitimate updates for the same incident would be skipped too.</li>
+        <li>The duplicate check's key: is it as narrow as it should be? If it covers the whole incident, a later legitimate update for the same incident is skipped too.</li>
         <li>Exactly-once needs the downstream system: a crash between acting and writing the ledger can still repeat the action.</li>
         <li>Each drill ran once (the crash-and-rerun drill three times). A pass is evidence, not a guarantee.</li>
       </ul>
