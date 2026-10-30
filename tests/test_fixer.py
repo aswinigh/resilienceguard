@@ -137,3 +137,11 @@ def test_fixer_audits_each_candidate_in_a_sandbox_branch(tmp_path):
     assert result["comparison"]["grade_after"] == "A"
     assert all(c.get("sandbox") for c in result["rounds"][0])
     assert not any(tmp_path.iterdir()) or not list(tmp_path.glob("round1_candidate*"))  # nothing run locally
+
+
+def test_evidence_targets_only_the_action_tools():
+    """Nemotron once put the duplicate check on a lookup tool; the prompt must name the action tools."""
+    from src.fixer import PLAYBOOK, audit_evidence
+    ev = audit_evidence({"grade": "C", "score": 60, "action_tools": ["draft_refund_or_replacement"], "scenarios": []})
+    assert "draft_refund_or_replacement" in ev and "in no other tool" in ev
+    assert "Never add the check to lookup" in PLAYBOOK

@@ -45,7 +45,9 @@ B. Garbled tool calls (arguments that are not valid JSON): never send the broken
    answer. Append a cleaned message instead, e.g. AIMessage(content=response.content or "",
    tool_calls=response.tool_calls), then a HumanMessage asking the model to call the tool again with
    valid JSON. Bound these retries.
-C. Repeated real-world actions after a crash and rerun: make each action tool idempotent. Before acting,
+C. Repeated real-world actions after a crash and rerun: make the ACTION TOOLS named in the audit evidence
+   idempotent, and only those. Never add the check to lookup, search or read tools: skipping a lookup on
+   the rerun removes data the agent needs and the action still repeats. Before acting,
    check a small persistent ledger (a JSON file in the agent's directory) for a key built from stable
    business identifiers taken from the actual input data (look at the input files below for the real
    field names). Never use model-written text, and never use Python's built-in hash(), which differs
@@ -87,7 +89,10 @@ def context_files(workdir: Path, exclude: str, limit: int = 6, max_chars: int = 
 
 def audit_evidence(audit: dict, with_traces: bool = False) -> str:
     """Model-readable summary of what failed, optionally with the error output of failed runs."""
-    lines = [f"Audit grade {audit['grade']} ({audit['score']}/100). Action tools: {audit['action_tools']}."]
+    tools = ", ".join(audit.get("action_tools") or []) or "none named"
+    lines = [f"Audit grade {audit['grade']} ({audit['score']}/100).",
+             f"ACTION TOOLS (the only tools that perform real-world actions; put the idempotency check in "
+             f"these and in no other tool): {tools}."]
     for r in audit["scenarios"]:
         status = "N/A" if r["passed"] is None else ("PASS" if r["passed"] else "FAIL")
         lines.append(f"- [{status}] {r['name']}: simulated: {r['simulates']} Result: {r['verdict']}")
