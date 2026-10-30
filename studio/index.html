@@ -118,6 +118,7 @@
      Takes about 5 to 10 minutes and uses your Token Factory credits. Requires <span class="mono">API_KEY</span> in <span class="mono">.env</span>.</p>
   <div class="controls" style="margin-bottom:12px">
     <select id="liveAgent"></select>
+    <label style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="liveSandbox" checked> Run in Token Factory Sandboxes</label>
     <button class="primary" id="liveStart">Start</button>
     <button id="liveClose">Close</button>
   </div>
@@ -157,6 +158,14 @@ function lineageChanges(run) {
     if (c.candidate === run.best.candidate && c.round <= run.best.round && (c.changes || []).length)
       groups.push({round: c.round, changes: c.changes});
   return groups;
+}
+
+function sandboxNote(before, after) {
+  const sb = (before && before.sandbox) || (after && after.sandbox);
+  if (!sb) return '<p class="sim" style="margin:-8px 0 16px;font-size:13px;color:var(--muted)">Ran on the local machine.</p>';
+  return `<div class="card" style="margin-bottom:16px;border-color:var(--accent)"><div class="label">Ran in Nebius Token Factory Sandboxes</div>
+    <div style="font-size:14px">Every audit ran inside its own microVM. Each candidate fix was a branch of the same agent checkpoint
+    <span class="mono">${esc(sb.agent_checkpoint || "")}</span>, with only the patched file changed.</div></div>`;
 }
 
 function scen(audit, id) { return (audit.scenarios || []).find((s) => s.id === id) || {}; }
@@ -259,6 +268,7 @@ function render(run) {
     <h2><span class="n">2</span>The audit</h2>
     <p class="lede">Six drills, each in a fresh copy of the agent with its own proxy. Every result below comes from the run itself:
       exit codes, the proxy's call log, and the tool results the agent sent back.</p>
+    ${sandboxNote(before, after)}
     <div class="scoreline">
       <div class="grade ${esc(before.grade)}">${esc(before.grade)}</div>
       <div><div class="big">${esc(before.score)}/100 before the fix</div><div style="color:var(--muted)">${esc(headline(before))}</div></div>
@@ -334,7 +344,7 @@ $("#liveClose").onclick = () => $("#liveDialog").close();
 $("#liveStart").onclick = async () => {
   const log = $("#liveLog");
   const r = await fetch("/api/live", {method: "POST", headers: {"Content-Type": "application/json"},
-                                      body: JSON.stringify({agent: $("#liveAgent").value})});
+                                      body: JSON.stringify({agent: $("#liveAgent").value, sandbox: $("#liveSandbox").checked})});
   const d = await r.json();
   if (!r.ok) { log.textContent = d.error || "Could not start."; return; }
   log.textContent = "Started…";

@@ -161,8 +161,9 @@ def fully_passing(audit: dict) -> bool:
 
 class Fixer:
     def __init__(self, client: Any, model: str = NEMOTRON_SUPER, auditor: AgentAuditor | None = None,
-                 candidates: int = 2, rounds: int = 3, max_tokens: int = 16000) -> None:
+                 candidates: int = 2, rounds: int = 3, max_tokens: int = 16000, sandbox: Any = None) -> None:
         self.client = client
+        self.sandbox = sandbox  # a SandboxRunner: each candidate is audited in its own microVM branch
         self.model = model
         self.auditor = auditor or AgentAuditor()
         self.smoke = AgentAuditor(self.auditor.upstream, self.auditor.api_key,
@@ -191,11 +192,19 @@ class Fixer:
             compile(gen["code"], filename, "exec")
         except SyntaxError as e:
             return {"valid": False, "problem": f"Syntax error: {e}"}
+        diff = unified_diff(source, gen["code"], filename)
+        changed = sum(1 for l in diff.splitlines() if l[:1] in "+-" and not l.startswith(("+++", "---")))
+        if self.sandbox is not None:
+            try:
+                audit = self.sandbox.audit(spec, self.auditor.pairs, patched={filename: gen["code"]},
+                                           label=f"{spec.name} ({workdir.name})")
+            except Exception as e:  # noqa: BLE001 - a failed sandbox run is reported, not fatal
+                return {"valid": False, "problem": f"Sandbox run failed: {str(e)[:500]}"}
+            return {"valid": True, "smoke_failed": not audit["baseline_ok"], "audit": audit, "diff": diff,
+                    "changed_lines": changed, "sandbox": audit.get("sandbox")}
         shutil.copytree(spec.workdir, workdir, ignore=COPY_IGNORE)
         (workdir / filename).write_text(gen["code"])
         patched = AgentSpec(spec.name, workdir, spec.command, spec.action_tools, spec.env, spec.timeout_s)
-        diff = unified_diff(source, gen["code"], filename)
-        changed = sum(1 for l in diff.splitlines() if l[:1] in "+-" and not l.startswith(("+++", "---")))
         smoke = self.smoke.audit(patched)
         if not smoke["baseline_ok"]:
             shutil.rmtree(workdir, ignore_errors=True)
@@ -272,6 +281,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--pairs", type=int, default=3)
     ap.add_argument("--key-env", default="API_KEY")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--sandbox", action="store_true",
+                    help="audit each candidate in its own Token Factory Sandboxes branch")
     args = ap.parse_args(argv)
 
     _load_env_file()
@@ -292,8 +303,15 @@ def main(argv: list[str] | None = None) -> None:
     run_dir = RUNS_DIR / f"{spec.name}_{time.strftime('%Y%m%d_%H%M%S')}"
     run_dir.mkdir(parents=True, exist_ok=True)
     client = openai.OpenAI(base_url=TOKEN_FACTORY, api_key=key, max_retries=4, timeout=600)
-    fixer = Fixer(client, args.model, AgentAuditor(TOKEN_FACTORY, key, pairs=args.pairs), args.candidates, args.rounds)
-    print(f"Asking {args.model} for {args.candidates} candidate fixes (up to {args.rounds} rounds) ...")
+    sandbox = None
+    if args.sandbox:
+        from src.sandbox import SandboxRunner
+
+        sandbox = SandboxRunner(key, os.environ.get("PROJECT_ID") or os.environ.get("NEBIUS_PROJECT_ID"))
+    fixer = Fixer(client, args.model, AgentAuditor(TOKEN_FACTORY, key, pairs=args.pairs), args.candidates,
+                  args.rounds, sandbox=sandbox)
+    where = "each in its own Token Factory Sandboxes branch" if sandbox else "locally"
+    print(f"Asking {args.model} for {args.candidates} candidate fixes (up to {args.rounds} rounds), audited {where} ...")
     result = fixer.fix(spec, audit, args.file, run_dir)
     for rnd in result["rounds"]:
         for c in rnd:

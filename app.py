@@ -64,16 +64,17 @@ def list_runs() -> list[dict]:
     return out
 
 
-def run_job(job_id: str, agent: str, candidates: int, rounds: int) -> None:
+def run_job(job_id: str, agent: str, candidates: int, rounds: int, sandbox: bool = False) -> None:
     """Live run: audit the cookbook agent, then have Nemotron fix it and re-audit."""
     job = JOBS[job_id]
     stamp = time.strftime("%Y-%m-%d_%H%M%S")
     audit_path = ROOT / f"audit_live_{stamp}.json"
     fix_path = ROOT / f"fix_live_{stamp}.json"
+    sb = ["--sandbox"] if sandbox else []
     steps = [
-        ("Audit (before)", [sys.executable, "-m", "src.agent_audit", "--cookbook", agent, "--out", str(audit_path)]),
+        ("Audit (before)", [sys.executable, "-m", "src.agent_audit", "--cookbook", agent, "--out", str(audit_path)] + sb),
         ("Nemotron fix + re-audit", [sys.executable, "-m", "src.fixer", "--cookbook", agent, "--audit", str(audit_path),
-                                     "--candidates", str(candidates), "--rounds", str(rounds), "--out", str(fix_path)]),
+                                     "--candidates", str(candidates), "--rounds", str(rounds), "--out", str(fix_path)] + sb),
     ]
     try:
         for label, cmd in steps:
@@ -161,7 +162,7 @@ class Studio(BaseHTTPRequestHandler):
             job_id = uuid.uuid4().hex[:10]
             JOBS[job_id] = {"id": job_id, "agent": agent, "status": "running", "log": [], "started": time.time()}
         threading.Thread(target=run_job, args=(job_id, agent, int(req.get("candidates", 2)),
-                                               int(req.get("rounds", 3))), daemon=True).start()
+                                               int(req.get("rounds", 3)), bool(req.get("sandbox"))), daemon=True).start()
         self._json(202, {"job": job_id})
 
 

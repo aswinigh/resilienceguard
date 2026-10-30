@@ -80,3 +80,16 @@ def test_compare_lists_what_the_fix_changed(brittle, fixed):
 
 def test_real_token_usage_is_counted(brittle):
     assert brittle["tokens"]["prompt"] > 0
+
+
+def test_agent_never_sees_the_real_key(model_url, tmp_path, monkeypatch):
+    monkeypatch.setenv("API_KEY", "real-secret-123")
+    monkeypatch.setenv("SOME_OTHER_NAME", "real-secret-123")
+    (tmp_path / "agent.py").write_text(
+        "import os, json\nprint(json.dumps({k: v for k, v in os.environ.items() if 'secret' in v or k.endswith('KEY')}))\n")
+    from src.agent_audit import SCENARIOS
+    auditor = AgentAuditor(model_url, "real-secret-123", scenarios=[s for s in SCENARIOS if s.id == "baseline"])
+    audit = auditor.audit(AgentSpec("leak", tmp_path, [sys.executable, "agent.py"], timeout_s=30))
+    out = audit["scenarios"][0]["runs"][0]["stdout_tail"]
+    assert "real-secret-123" not in out
+    assert "dummy-the-proxy-holds-the-real-key" in out

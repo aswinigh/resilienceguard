@@ -13,3 +13,4 @@ spike_duplicates.json
 audit_*.json
 .rg_runs/
 fix_*.json
+sandbox_probe.json

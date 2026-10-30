@@ -110,3 +110,30 @@ def test_syntax_error_is_reported_back_for_repair(model_url, tmp_path):
     assert "Syntax error" in result["rounds"][0][0]["problem"]
     assert "Syntax error" in stub.calls[1]["messages"][1]["content"]
     assert result["comparison"]["grade_after"] == "A"
+
+
+def test_fixer_audits_each_candidate_in_a_sandbox_branch(tmp_path):
+    class FakeSandbox:
+        def __init__(self):
+            self.calls = []
+
+        def audit(self, spec, pairs, patched=None, label=None):
+            self.calls.append(patched)
+            good = "max_retries=6" in next(iter(patched.values()))
+            return {"agent": label, "score": 100 if good else 10, "grade": "A" if good else "F", "baseline_ok": True,
+                    "failed": [] if good else ["Brief provider outage"], "passed": [], "action_tools": [],
+                    "scenarios": [], "sandbox": {"agent_checkpoint": "img-1", "result_image": f"img-{len(self.calls) + 1}"}}
+
+    fixed_src = (FIXTURES / "incident_agent_fixed.py").read_text()
+    brittle_src = (FIXTURES / "incident_agent_brittle.py").read_text()
+    spec = AgentSpec("brittle", FIXTURES, [sys.executable, "incident_agent_brittle.py"], ["post_status_update"])
+    before = {"grade": "F", "score": 10, "action_tools": ["post_status_update"], "scenarios": [], "failed": ["x"],
+              "baseline_ok": True}
+    sandbox = FakeSandbox()
+    stub = StubLLM([_reply(brittle_src), _reply(fixed_src)])
+    result = Fixer(stub, auditor=AgentAuditor("http://unused", "k", pairs=1), candidates=2, rounds=1,
+                   sandbox=sandbox).fix(spec, before, "incident_agent_brittle.py", tmp_path)
+    assert len(sandbox.calls) == 2 and all(list(c) == ["incident_agent_brittle.py"] for c in sandbox.calls)
+    assert result["comparison"]["grade_after"] == "A"
+    assert all(c.get("sandbox") for c in result["rounds"][0])
+    assert not any(tmp_path.iterdir()) or not list(tmp_path.glob("round1_candidate*"))  # nothing run locally

@@ -105,10 +105,13 @@ flowchart LR
 - **Nemotron, twice:** the audited agents run on `nvidia/nemotron-3-super-120b-a12b`, and the same model
   writes and repairs the fixes. The demo run used about 69k tokens for the fixes and about 520k tokens of
   agent traffic across all drills (before and every candidate).
-- **Token Factory Sandboxes:** the natural home for this, with VM isolation for untrusted agent code and
-  checkpoint/branch to fork one branch per drill and per candidate fix. Our project's Sandboxes access is
-  still pending activation, so candidates currently run in local copies; the fixer is structured so each
-  candidate is an independent workspace.
+- **Token Factory Sandboxes:** with `--sandbox`, every audit runs inside its own microVM, following Nebius's
+  "Compare two fixes" recipe. A runtime image (Python 3.12 + ResilienceGuard + agent packages) is built once
+  and cached; the agent's files are saved as a checkpoint; each candidate fix is a branch of that checkpoint
+  with only the patched file changed, audited in parallel. The Token Factory key reaches the microVM only as
+  an environment variable of the audit process (never in files or saved images) and is stripped from the
+  agent's own environment. The second saved run in [`runs/`](runs/) was produced this way: F (10) to A (100)
+  in two rounds, every audit in a microVM.
 
 ## Quickstart
 
@@ -127,6 +130,14 @@ Audit and fix a cookbook agent from the command line (clones the cookbook into `
 .venv/bin/python -m src.fixer --cookbook incident_response --audit audit_incident.json --out fix_incident.json
 ```
 
+Same, with every audit inside Token Factory Sandboxes (needs `PROJECT_ID` in `.env` and Sandboxes enabled on
+the project; `python -m src.sandbox --probe` checks access and builds the runtime image):
+
+```bash
+.venv/bin/python -m src.agent_audit --cookbook incident_response --sandbox --out audit_incident.json
+.venv/bin/python -m src.fixer --cookbook incident_response --audit audit_incident.json --sandbox --out fix_incident.json
+```
+
 Audit your own agent: give its folder, its command, and the tools that have real-world effects:
 
 ```bash
@@ -141,8 +152,9 @@ Use the proxy on its own (`fault_profile.json` is an example profile):
 export OPENAI_BASE_URL=http://localhost:8787/v1     # then run any agent
 ```
 
-> Auditing runs the agent's code on your machine (each drill in a temporary copy of its folder). Only audit
-> agents you trust until Sandboxes isolation is in place. The studio listens on 127.0.0.1 and only accepts
+> Without `--sandbox`, auditing runs the agent's code on your machine (each drill in a temporary copy of its
+> folder), so only audit agents you trust; with `--sandbox` it runs in Token Factory microVMs. In both cases the
+> agent never sees the real API key. The studio listens on 127.0.0.1 and only accepts
 > live-run requests from its own page.
 
 ## How it compares
@@ -164,7 +176,8 @@ including the failures a gateway can't reach.
 - The cookbook tools are draft-only; the harm described assumes they are wired to real actions.
 - The fixer edits one file and relies on the agent's behaviour being checkable by exit code and output.
 - The Python shim covers `httpx` and `httpx2` clients; other HTTP stacks need the base URL set to the proxy.
-- Sandboxes integration is pending access; until then candidates run locally.
+- Sandboxed runs upload the agent folder (skipping `.env`, VCS and caches) and run the audit in one microVM per
+  candidate; drills inside it still run in parallel on that VM rather than one VM per drill.
 
 ## Reproduce the research
 
@@ -181,9 +194,10 @@ app.py                  studio server          studio/index.html   studio page
 src/proxy.py            fault-injection proxy  src/rg_shim/        no-code-change launcher shim
 src/agent_audit.py      the six drills         src/fixer.py        Nemotron fix loop
 src/guard.py            circuit breaker        src/config/         fault rules
+src/sandbox.py          Token Factory Sandboxes runner (runtime image, agent checkpoint, branches)
 src/interceptor/        in-process fault injection for the OpenAI Python SDK (library mode)
 runs/                   saved real runs        scripts/            setup check, research spikes, save_run
-tests/                  71 tests (fake model + stand-in agents, no network needed)
+tests/                  78 tests (fake model, stand-in agents, fake Sandboxes client; no network needed)
 ```
 
 ```bash

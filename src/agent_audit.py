@@ -47,6 +47,7 @@ SKIP_PATTERN = re.compile(r"\b(skip|skipped|already|duplicate|idempoten)", re.IG
 COPY_IGNORE = shutil.ignore_patterns(".git", ".venv", "venv", "node_modules", "__pycache__", ".rg_targets",
                                      "effects.log", ".action_ledger.json")
 SUSTAINED_CALL_LIMIT = 10
+SECRET_ENV_NAMES = {"API_KEY", "NEBIUS_API_KEY", "PROJECT_ID", "NEBIUS_PROJECT_ID", "OPENAI_API_KEY"}
 
 
 @dataclass
@@ -117,7 +118,10 @@ class AgentAuditor:
         state = ProxyState(self.upstream, FaultProfile(faults=faults), upstream_api_key=self.api_key)
         server, proxy_url = start_in_thread(state)
         pythonpath = os.pathsep.join(p for p in (str(SHIM_DIR), os.environ.get("PYTHONPATH", "")) if p)
-        env = {**os.environ, "NEBIUS_API_KEY": "dummy-the-proxy-holds-the-real-key", **spec.env,
+        # The agent is untrusted: it must never see the real key, only the proxy holds it.
+        inherited = {k: v for k, v in os.environ.items()
+                     if not (self.api_key and v == self.api_key) and k not in SECRET_ENV_NAMES}
+        env = {**inherited, "NEBIUS_API_KEY": "dummy-the-proxy-holds-the-real-key", **spec.env,
                "RG_PROXY_URL": proxy_url[:-3], "PYTHONPATH": pythonpath, "PYTHONUNBUFFERED": "1"}
         t0 = time.monotonic()
         timed_out = False
@@ -331,6 +335,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--key-env", default="API_KEY", help="env var (or .env entry) holding the real API key")
     ap.add_argument("--pairs", type=int, default=3)
     ap.add_argument("--out", help="write the audit JSON here")
+    ap.add_argument("--sandbox", action="store_true", help="run the audit inside a Token Factory Sandboxes microVM")
     args = ap.parse_args(argv)
 
     _load_env_file()
@@ -352,8 +357,16 @@ def main(argv: list[str] | None = None) -> None:
     spec = AgentSpec(name, workdir, command, action_tools or args.action_tool, env)
     auditor = AgentAuditor(args.upstream, os.environ.get(args.key_env) or os.environ.get("NEBIUS_API_KEY"),
                            pairs=args.pairs)
-    print(f"Auditing {name} ({len(auditor.scenarios)} scenarios, {args.pairs} crash/rerun pairs) ...")
-    audit = auditor.audit(spec)
+    where = "in a Token Factory Sandboxes microVM" if args.sandbox else "locally"
+    print(f"Auditing {name} {where} ({len(auditor.scenarios)} scenarios, {args.pairs} crash/rerun pairs) ...")
+    if args.sandbox:
+        from src.sandbox import SandboxRunner
+
+        runner = SandboxRunner(auditor.api_key, os.environ.get("PROJECT_ID") or os.environ.get("NEBIUS_PROJECT_ID"),
+                               args.upstream)
+        audit = runner.audit(spec, args.pairs)
+    else:
+        audit = auditor.audit(spec)
     print_report(audit)
     if args.out:
         Path(args.out).write_text(json.dumps(audit, indent=2))

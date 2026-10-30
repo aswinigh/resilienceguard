@@ -5,5 +5,7 @@ pydantic>=2.7
 # Needed to run the Nebius cookbook LangChain agents used in the demo
 langchain-openai>=0.3
 python-dotenv>=1.0
+# Token Factory Sandboxes (optional: --sandbox)
+contree-sdk==0.3.6
 # Tests
 pytest>=8
