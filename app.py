@@ -35,6 +35,17 @@ RUNS = ROOT / "runs"
 PAGE = ROOT / "studio" / "index.html"
 WORK = Path(tempfile.gettempdir()) / "rg_studio_agents"
 
+def _load_env_file() -> None:
+    """Local runs: read API_KEY / PROJECT_ID from .env (hosted deployments set real environment variables)."""
+    env = ROOT / ".env"
+    if env.exists():
+        for line in env.read_text().splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_env_file()
 HOSTED = os.environ.get("RG_HOSTED") == "1"
 ACCESS_CODE = os.environ.get("RG_ACCESS_CODE") or None
 MAX_JOBS_PER_DAY = int(os.environ.get("RG_MAX_JOBS_PER_DAY", "10"))
