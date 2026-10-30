@@ -20,7 +20,7 @@ def base():
 
 
 def test_page_and_saved_runs(base):
-    assert "ResilienceGuard Studio" in httpx.get(base + "/").text
+    assert "Break it. Fix it. Prove it." in httpx.get(base + "/").text
     runs = httpx.get(base + "/api/runs").json()
     assert runs and all(r["file"].endswith(".json") for r in runs)
     run = httpx.get(f"{base}/api/runs/{runs[0]['file']}").json()
@@ -52,7 +52,9 @@ def test_live_runs_only_from_the_studio_page(base):
 
 def test_config_reports_limits(base):
     cfg = httpx.get(base + "/api/config").json()
-    assert set(cfg) >= {"hosted", "fix_available", "sandbox_available", "jobs_left_today", "presets"}
+    assert set(cfg) >= {"hosted", "fix_available", "sandbox_available", "jobs_left_today", "presets",
+                        "drills", "audit_eta", "fix_eta"}
+    assert len(cfg["drills"]) == 6
     assert "incident_response" in cfg["presets"]
 
 
@@ -64,7 +66,11 @@ def test_hosted_rules(monkeypatch, base):
                            "command": "python main.py", "preset": None}
     hdr = {"Content-Type": "application/json"}
     post = lambda body: httpx.post(base + "/api/live", content=json.dumps(body), headers=hdr)  # noqa: E731
-    assert post({"token": "t1", "fix": True, "code": "wrong"}).status_code == 403
+    fix = lambda body: httpx.post(base + "/api/fix", content=json.dumps(body), headers=hdr)  # noqa: E731
+    assert fix({"job": "nope"}).status_code == 400  # the fix builds on a finished audit
+    app.JOBS["a1"] = {"kind": "audit", "status": "done", "audit_path": "/tmp/none.json",
+                      "req": {"info": app.INSPECTED["t1"]}}
+    assert fix({"job": "a1", "code": "wrong"}).status_code == 403
     assert post({"token": "t1", "command": "rm -rf /"}).status_code == 400
     monkeypatch.setattr(app, "sandbox_available", lambda: False)
     assert post({"token": "t1"}).status_code == 503

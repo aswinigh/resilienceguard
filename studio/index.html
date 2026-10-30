@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ResilienceGuard Studio</title>
+<title>ResilienceGuard: fire drills for AI agents</title>
 <style>
   :root {
     --paper: #f6f4ef; --card: #fffdf9; --ink: #1c1b19; --muted: #6b675f; --line: #e3dfd5;
@@ -15,215 +15,293 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 var(--sans); }
   a { color: inherit; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; padding: 22px 40px;
-           border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 5; }
-  .brand { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
-  .brand small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
-  .steps { display: flex; gap: 6px; margin-left: auto; }
-  .steps a { text-decoration: none; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
-             font-size: 13px; color: var(--muted); }
-  .steps a b { color: var(--accent); margin-right: 4px; }
-  .controls { display: flex; gap: 8px; align-items: center; }
-  select, button { font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px;
-                   border: 1px solid var(--line); background: var(--card); color: var(--ink); }
-  button { cursor: pointer; }
-  button.primary { background: var(--ink); color: var(--card); border-color: var(--ink); }
-  main { max-width: 1120px; margin: 0 auto; padding: 32px 40px 80px; }
-  section { margin-bottom: 56px; scroll-margin-top: 100px; }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 32px; border-bottom: 1px solid var(--line); background: var(--card); }
+  .brand { font-weight: 700; font-size: 17px; cursor: pointer; }
+  .brand small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+  nav { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  button, select, input { font: inherit; font-size: 14px; }
+  button { white-space: nowrap; cursor: pointer; padding: 9px 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  button.primary { background: var(--ink); color: var(--card); border-color: var(--ink); font-weight: 600; }
+  button.link { border: 0; background: none; padding: 6px 4px; color: var(--muted); text-decoration: underline; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  select, input[type=text], input[type=password] { padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  main { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+  main.wide { max-width: 1080px; }
+  h1 { font-size: 34px; letter-spacing: -0.02em; margin: 0 0 8px; line-height: 1.15; }
   h2 { font-size: 22px; letter-spacing: -0.01em; margin: 0 0 4px; }
-  h2 .n { color: var(--accent); font-family: var(--mono); font-size: 15px; margin-right: 10px; }
-  .lede { color: var(--muted); margin: 0 0 20px; max-width: 760px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
-  .grid { display: grid; gap: 14px; }
-  .g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); }
-  @media (max-width: 860px) { .g2, .g3 { grid-template-columns: 1fr; } header, main { padding-left: 18px; padding-right: 18px; }
-    header { position: static; } .steps { margin-left: 0; } .controls { flex-wrap: wrap; width: 100%; } .controls select { max-width: 100%; flex: 1; }
-    .scoreline { flex-wrap: wrap; } .scoreline > div:last-child { margin-left: 0 !important; } }
-  .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
-  .mono { font-family: var(--mono); font-size: 13px; }
-  .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
-  .flow .node { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
-  .flow .node.proxy { border-color: var(--warn); background: var(--warn-bg); }
-  .flow .arrow { color: var(--muted); }
-  .scoreline { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
-  .grade { font: 700 44px/1 var(--sans); width: 76px; height: 76px; display: grid; place-items: center; border-radius: 14px; }
+  .sub { color: var(--muted); margin: 0 0 26px; font-size: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px 26px; }
+  .card + .card { margin-top: 16px; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
+  .muted { color: var(--muted); } .small { font-size: 13px; } .mono { font-family: var(--mono); font-size: 13px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 240px; }
+  .chip { border-radius: 999px; padding: 6px 12px; font-size: 13px; background: var(--paper); }
+  .check { display: inline-flex; gap: 6px; align-items: center; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; }
+  .found { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .err { color: var(--fail); font-size: 14px; margin-top: 10px; }
+  .grade { font: 700 40px/1 var(--sans); width: 70px; height: 70px; display: grid; place-items: center; border-radius: 14px; flex: none; }
   .grade.A, .grade.B { background: var(--pass-bg); color: var(--pass); }
   .grade.C, .grade.D { background: var(--warn-bg); color: var(--warn); }
   .grade.F { background: var(--fail-bg); color: var(--fail); }
-  .scoreline .big { font-size: 18px; font-weight: 600; }
+  .scoreline { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
+  .big { font-size: 18px; font-weight: 600; }
   table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
-       color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 14px; }
   tr:last-child td { border-bottom: 0; }
-  td .sim { color: var(--muted); font-size: 13px; }
   .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
-  .pill.pass { background: var(--pass-bg); color: var(--pass); }
-  .pill.fail { background: var(--fail-bg); color: var(--fail); }
-  .pill.na { background: var(--na-bg); color: var(--na); }
-  .verdict { font-size: 13px; margin-top: 4px; word-break: break-word; }
+  .pill.pass { background: var(--pass-bg); color: var(--pass); } .pill.fail { background: var(--fail-bg); color: var(--fail); }
+  .pill.na, .pill.wait { background: var(--na-bg); color: var(--na); }
+  .why { font-size: 13px; margin-top: 3px; color: var(--muted); word-break: break-word; }
   .tl { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
-  .tl i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; background: var(--na); }
-  .tl i.ok, .tl i.mock { background: var(--pass); }
-  .tl i.injected_error { background: var(--fail); }
-  .tl i.upstream_error { background: #6e1009; }
-  .tl i.corrupted { background: var(--warn); }
-  .tl i.circuit_open, .tl i.killed { background: var(--na); }
-  .tlrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-  .tlrow span { font-size: 11px; color: var(--muted); width: 58px; }
+  .tl i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; background: var(--na); }
+  .tl i.ok, .tl i.mock { background: var(--pass); } .tl i.injected_error { background: var(--fail); }
+  .tl i.upstream_error { background: #6e1009; } .tl i.corrupted { background: var(--warn); }
+  .tlrow { display: flex; align-items: center; gap: 8px; margin-top: 3px; } .tlrow span { font-size: 11px; color: var(--muted); width: 56px; }
   .tlrow .tl { margin-top: 0; }
-  .scoreline > div:nth-child(2) { flex: 1; }
-  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 10px; flex-wrap: wrap; }
-  .legend .tl { display: inline-flex; margin: 0 4px 0 0; vertical-align: -1px; }
-  .dup { border-left: 4px solid var(--fail); }
-  .dup.ok { border-left-color: var(--pass); }
+  .dup { border-left: 4px solid var(--fail); } .dup.ok { border-left-color: var(--pass); }
   .dup blockquote { margin: 8px 0 0; font-size: 14px; padding: 10px 12px; background: var(--paper); border-radius: 8px; }
-  .rounds { display: flex; flex-direction: column; gap: 8px; }
-  .round { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .round .r { width: 76px; font-size: 13px; color: var(--muted); }
-  .cand { font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); }
-  .cand.best { border-color: var(--pass); background: var(--pass-bg); font-weight: 600; }
-  .cand.bad { color: var(--fail); }
-  ul.changes { margin: 6px 0 0; padding-left: 18px; } ul.changes li { margin-bottom: 6px; }
-  details summary { cursor: pointer; font-weight: 600; }
-  pre.diff { font: 12px/1.5 var(--mono); background: #fbfaf7; border: 1px solid var(--line); border-radius: 8px;
-             padding: 12px; overflow: auto; max-height: 520px; margin: 12px 0 0; }
-  pre.diff .add { background: #e6f4ea; display: block; } pre.diff .del { background: #fbe9e7; display: block; }
-  pre.diff .hunk { color: #3b5bdb; display: block; }
-  .stats { display: flex; gap: 28px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
-  .stats b { color: var(--ink); font-size: 15px; display: block; }
-  .empty { color: var(--muted); padding: 60px 0; text-align: center; }
-  dialog { border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: min(760px, 92vw); background: var(--card); }
-  dialog::backdrop { background: rgba(28,27,25,0.35); }
-  pre.log { font: 12px/1.45 var(--mono); background: var(--ink); color: #e9e6df; border-radius: 8px; padding: 12px;
-            height: 320px; overflow: auto; white-space: pre-wrap; }
-  .checklist li { margin-bottom: 6px; }
-  .hero { margin-bottom: 48px; }
-  .hero h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 6px; }
-  .hero .sub { color: var(--muted); margin: 0 0 22px; max-width: 820px; }
-  .loop { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr; align-items: stretch; gap: 0; }
-  .stage { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
-  .stage .k { font: 600 12px/1 var(--mono); color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
-  .stage .big { font: 700 34px/1.1 var(--sans); margin: 10px 0 6px; letter-spacing: -0.02em; }
-  .stage .big.fail { color: var(--fail); } .stage .big.pass { color: var(--pass); }
-  .stage .d { font-size: 13px; color: var(--muted); }
-  .loop .arr { display: grid; place-items: center; color: var(--muted); font-size: 22px; padding: 0 8px; }
-  .verdictline { margin-top: 14px; font-size: 14px; padding: 12px 16px; border-radius: 10px; background: var(--card);
-                 border: 1px solid var(--line); }
-  .verdictline b.f { color: var(--fail); } .verdictline b.p { color: var(--pass); }
-  @media (max-width: 860px) { .loop { grid-template-columns: 1fr; } .loop .arr { transform: rotate(90deg); padding: 4px; } }
-  svg.tree text { font-family: var(--sans); }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+  .spinner { width: 18px; height: 18px; border: 2.5px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.9s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .waitlist { list-style: none; padding: 0; margin: 16px 0 0; }
+  .waitlist li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .waitlist li:last-child { border-bottom: 0; }
+  details { margin-top: 16px; } details summary { cursor: pointer; font-weight: 600; }
+  pre.log { font: 12px/1.45 var(--mono); background: var(--ink); color: #e9e6df; border-radius: 8px; padding: 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+  pre.diff { font: 12px/1.5 var(--mono); background: #fbfaf7; border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; max-height: 480px; }
+  pre.diff .add { background: #e6f4ea; display: block; } pre.diff .del { background: #fbe9e7; display: block; } pre.diff .hunk { color: #3b5bdb; display: block; }
+  .loop { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr; align-items: stretch; margin: 6px 0 16px; }
+  .stage { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .stage .k { font: 600 11px/1 var(--mono); color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+  .stage .n { font: 700 28px/1.1 var(--sans); margin: 8px 0 4px; letter-spacing: -0.02em; }
+  .stage .n.fail { color: var(--fail); } .stage .n.pass { color: var(--pass); }
+  .stage .d { font-size: 12.5px; color: var(--muted); }
+  .loop .arr { display: grid; place-items: center; color: var(--muted); font-size: 20px; padding: 0 6px; }
+  .verdictline { font-size: 14px; } .verdictline b.f { color: var(--fail); } .verdictline b.p { color: var(--pass); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; align-items: start; } .grid2 > .card { margin-top: 0; }
+  ul.changes { margin: 6px 0 0; padding-left: 18px; } ul.changes li { margin-bottom: 5px; font-size: 14px; }
+  @media (max-width: 760px) { .loop, .grid2 { grid-template-columns: 1fr; } .loop .arr { transform: rotate(90deg); } header { padding: 14px 16px; } .brand small, #runPicker { display: none !important; } nav { gap: 6px; } nav button { padding: 7px 9px; font-size: 13px; } .brand { font-size: 15px; } main { padding: 24px 14px 60px; } h1 { font-size: 27px; } }
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">ResilienceGuard<small>Fire drills for AI agents on Nebius Token Factory</small></div>
-  <nav class="steps"><a href="#agent"><b>1</b>Agent</a><a href="#audit"><b>2</b>Audit</a><a href="#fix"><b>3</b>Fix</a></nav>
-  <div class="controls">
-    <select id="runPicker" aria-label="Saved run"></select>
-    <button class="primary" id="liveBtn">Audit an agent…</button>
-  </div>
+  <div class="brand" id="home">ResilienceGuard<small>Fire drills for AI agents on Nebius Token Factory</small></div>
+  <nav>
+    <select id="runPicker" aria-label="Example result" style="display:none;max-width:300px"></select>
+    <button id="navExample">Example result</button>
+    <button class="primary" id="navAudit">Audit an agent</button>
+  </nav>
 </header>
-
-<main id="app"><div class="empty">Loading saved runs…</div></main>
-
-<dialog id="liveDialog">
-  <h3 style="margin:0 0 4px">Audit an agent</h3>
-  <p class="lede" style="margin:0 0 14px;font-size:14px">Pick a Nebius cookbook agent or paste a public GitHub link to a Python agent that calls
-    Token Factory. The code is fetched and audited inside Token Factory Sandboxes microVMs, never on this server.</p>
-  <div class="grid" style="gap:10px">
-    <div class="controls" style="flex-wrap:wrap">
-      <select id="liveSource"></select>
-      <input id="liveUrl" placeholder="https://github.com/owner/repo/tree/main/path/to/agent"
-             style="flex:1;min-width:280px;font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px">
-      <button id="liveFetch">Fetch</button>
-    </div>
-    <div id="liveInfo" class="sim" style="font-size:13px;color:var(--muted)"></div>
-    <div id="liveForm" style="display:none" class="grid" >
-      <label class="sim" style="font-size:13px">Command <input id="liveCmd" class="mono"
-        style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin-top:4px"></label>
-      <div><div class="label">Tools with real-world effects (watched for repeats after a crash)</div><div id="liveTools" style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px"></div></div>
-      <div class="controls" style="flex-wrap:wrap">
-        <button class="primary" id="liveAudit">Run audit</button>
-        <button id="liveFix">Audit + Nemotron fix</button>
-        <input id="liveCode" type="password" placeholder="access code (for fixes)"
-               style="font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px">
-      </div>
-    </div>
-    <div id="liveStatus" class="sim" style="font-size:12px;color:var(--muted)"></div>
-  </div>
-  <pre class="log" id="liveLog" style="margin-top:12px">Not started.</pre>
-  <div class="controls" style="justify-content:flex-end;margin-top:10px"><button id="liveClose">Close</button></div>
-</dialog>
+<main id="app"></main>
 
 <script>
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const pill = (p) => p === null || p === undefined ? '<span class="pill na">N/A</span>'
-  : p ? '<span class="pill pass">Pass</span>' : '<span class="pill fail">Fail</span>';
-const OUTCOME = {ok: "answered", mock: "answered", injected_error: "fault injected", upstream_error: "provider rejected the request",
-                 corrupted: "garbled tool call injected", circuit_open: "blocked", killed: "killed"};
-
-function timeline(run) {
-  if (!run || !run.timeline) return "";
-  return '<div class="tl">' + run.timeline.map((t) =>
-    `<i class="${esc(t.outcome)}" title="${esc(OUTCOME[t.outcome] || t.outcome)}${t.status ? " (" + t.status + ")" : ""}"></i>`).join("") + "</div>";
-}
-
-function actionText(a) {
-  try { const args = JSON.parse(a.arguments); return args.summary || args.reason || a.arguments; }
-  catch (e) {  // arguments may be cut off: pull the readable field out of the partial JSON
-    const m = /"(summary|reason)"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(a.arguments || "");
-    return m ? m[2] : a.arguments;
-  }
-}
-
-function shortVerdict(v) {  // "Crashed ...: langchain_openai...OpenAIAPIError: Error code: 500 - {...}" -> "... OpenAIAPIError (500)"
-  return String(v || "").replace(/:\s*(?:[\w.]+\.)?(\w+(?:Error|Exception)):\s*Error code:\s*(\d+).*$/s, ": $1 ($2)")
-                        .replace(/:\s*(?:[\w.]+\.)?(\w+(?:Error|Exception)):\s*(.{0,90}).*$/s, ": $1: $2");
-}
-
-function lineageChanges(run) {
-  const groups = [];
-  for (const rnd of run.rounds || []) for (const c of rnd)
-    if (c.candidate === run.best.candidate && c.round <= run.best.round && (c.changes || []).length)
-      groups.push({round: c.round, changes: c.changes});
-  return groups;
-}
+const app = $("#app");
+let cfg = {}, fetched = null, poller = null, ticker = null, lastAuditJob = null;
 
 const PLAIN = {baseline: "fails even a normal run", brief_outage: "crashes on a brief outage",
   rate_limit: "crashes on a rate-limit burst", malformed_tool_call: "one garbled tool call is fatal",
   crash_after_action: "repeats its action when rerun", sustained_outage: "doesn't stop during a sustained outage"};
+const OUTCOME = {ok: "answered", mock: "answered", injected_error: "fault injected", upstream_error: "provider rejected the request",
+  corrupted: "garbled tool call injected", circuit_open: "blocked", killed: "killed"};
 
-function heroHtml(run, before, after) {
-  const meta = run.meta || {};
-  const cands = (run.rounds || []).flat();
-  const audited = cands.filter((c) => c.audit);
-  const failedIds = (before.scenarios || []).filter((s) => s.passed === false && s.weight !== undefined).map((s) => s.id);
-  const drills = (before.scenarios || []).length;
-  const vms = before.sandbox ? 1 + audited.filter((c) => c.sandbox || (c.audit && c.audit.sandbox)).length : 0;
-  const model = (run.model || "").split("/").pop();
-  const found = failedIds.map((id) => PLAIN[id] || id);
-  return `<section class="hero">
+const pill = (p) => p === null || p === undefined ? '<span class="pill na">N/A</span>' : p ? '<span class="pill pass">Pass</span>' : '<span class="pill fail">Fail</span>';
+const scen = (a, id) => ((a && a.scenarios) || []).find((s) => s.id === id) || {};
+const timeline = (run) => !run || !run.timeline ? "" : '<div class="tl">' + run.timeline.map((t) =>
+  `<i class="${esc(t.outcome)}" title="${esc(OUTCOME[t.outcome] || t.outcome)}${t.status ? " (" + t.status + ")" : ""}"></i>`).join("") + "</div>";
+const pairTl = (x) => { const p = (x.pairs || []).find((q) => q.triggered) || (x.pairs || [])[0];
+  return p ? `<div class="tlrow"><span>crash run</span>${timeline(p.crash_run)}</div><div class="tlrow"><span>rerun</span>${timeline(p.rerun)}</div>` : ""; };
+const drillTl = (x) => x.runs ? timeline(x.runs[0]) : pairTl(x);
+function shortWhy(v) {
+  return String(v || "").replace(/:\s*(?:[\w.]+\.)?(\w+(?:Error|Exception)):\s*Error code:\s*(\d+).*$/s, ": $1 ($2)")
+    .replace(/:\s*(?:[\w.]+\.)?(\w+(?:Error|Exception)):\s*(.{0,90}).*$/s, ": $1: $2");
+}
+function actionText(a) {
+  try { const args = JSON.parse(a.arguments); return args.summary || args.reason || a.arguments; }
+  catch (e) { const m = /"(summary|reason)"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(a.arguments || ""); return m ? m[2] : a.arguments; }
+}
+const failedIds = (a) => ((a && a.scenarios) || []).filter((s) => s.passed === false).map((s) => s.id);
+const fmt = (s) => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+
+async function api(url, body) {
+  const r = await fetch(url, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+  let d = {}; try { d = await r.json(); } catch (e) {}
+  return [r.ok, d];
+}
+function stopTimers() { clearInterval(poller); clearInterval(ticker); }
+function setWide(w) { app.className = w ? "wide" : ""; }
+
+/* ---------------- 1. Start + 2. Confirm ---------------- */
+function viewHome() {
+  stopTimers(); setWide(false); $("#runPicker").style.display = "none"; fetched = null;
+  const presets = Object.entries(cfg.presets || {});
+  app.innerHTML = `
     <h1>Break it. Fix it. Prove it.</h1>
-    <p class="sub">The ${esc((meta.title || run.agent).toLowerCase())} from the ${esc((meta.source || "").split(":")[0] || "its repository")}, run unmodified on Nebius Token Factory.
-      ResilienceGuard made the provider misbehave on purpose, Nemotron rewrote the agent, and the same drills proved the fix.</p>
-    <div class="loop">
-      <div class="stage"><div class="k">1 · Break</div><div class="big fail">${failedIds.length} failure${failedIds.length === 1 ? "" : "s"}</div>
-        <div class="d">${drills} drills on real Token Factory traffic: outages, rate limits, a garbled tool call, a crash after acting. Grade <b>${esc(before.grade)}</b> (${esc(before.score)}/100).</div></div>
-      <div class="arr">→</div>
-      <div class="stage"><div class="k">2 · Fix</div><div class="big">${cands.length ? cands.length + " fixes" : "–"}</div>
-        <div class="d">${cands.length ? `${esc(model)} read the code and the evidence and wrote ${cands.length} candidate fixes over ${(run.rounds || []).length} rounds, repairing its own mistakes from their error output.` : "Audit-only run. Start “Audit + Nemotron fix” to have Nemotron write and prove a fix."}</div></div>
-      <div class="arr">→</div>
-      <div class="stage"><div class="k">3 · Prove</div><div class="big ${after && after.grade === "A" ? "pass" : ""}">${after ? esc(after.grade) + " " + esc(after.score) : "–"}</div>
-        <div class="d">${after ? `The same ${drills} drills, re-run on the chosen fix: ${(after.passed || []).length + (after.baseline_ok ? 1 : 0)} of ${drills} pass.` : "No fix passed yet."}</div></div>
-      <div class="arr">→</div>
-      <div class="stage"><div class="k">4 · Isolate</div><div class="big">${vms ? vms + " microVMs" : "Local"}</div>
-        <div class="d">${vms ? "Every audit ran in its own Token Factory Sandboxes microVM; each fix was a branch of one agent checkpoint." : "This run used local copies of the agent. Use --sandbox to run every audit in a Token Factory microVM."}</div></div>
+    <p class="sub">Point ResilienceGuard at a real AI agent. It makes Nebius Token Factory misbehave on purpose, shows exactly what breaks,
+      and has Nemotron fix the agent, proven by the same drills.</p>
+    <div class="card">
+      <div class="label">Audit an agent</div>
+      <div class="row"><input type="text" id="url" class="grow" placeholder="https://github.com/owner/repo/tree/main/path/to/agent">
+        <button class="primary" id="fetchBtn">Fetch</button></div>
+      <div class="row small muted" style="margin-top:10px">Or try one from Nebius's cookbook:
+        ${presets.map(([k, v]) => `<button class="chip" data-preset="${esc(k)}">${esc(v.title)}</button>`).join("")}</div>
+      <div id="found"></div>
     </div>
-    ${!found.length && before.baseline_ok ? '<div class="verdictline"><b class="p">No failures found</b> in these drills.</div>' : ""}
-    ${found.length ? `<div class="verdictline"><b class="f">Found:</b> ${esc(found.join("; "))}. ${after && after.grade === "A" ? '<b class="p">Fixed and proven.</b>' : ""}</div>` : ""}
-  </section>`;
+    <p class="small muted" style="margin-top:14px">Python agents that call Token Factory. The code runs only inside Token Factory Sandboxes microVMs, never on this server.
+      <button class="link" id="seeExample">Or see an example result →</button></p>`;
+  $("#fetchBtn").onclick = () => doFetch({url: $("#url").value.trim()});
+  $("#url").onkeydown = (e) => { if (e.key === "Enter") doFetch({url: $("#url").value.trim()}); };
+  document.querySelectorAll("[data-preset]").forEach((b) => b.onclick = () => doFetch({preset: b.dataset.preset}));
+  $("#seeExample").onclick = viewExample;
+}
+
+async function doFetch(body) {
+  const box = $("#found");
+  if (!body.preset && !body.url) { box.innerHTML = '<div class="err">Paste a GitHub link first.</div>'; return; }
+  box.innerHTML = '<div class="found row"><div class="spinner"></div><span class="muted">Fetching the agent from GitHub…</span></div>';
+  const [ok, d] = await api("/api/inspect", body);
+  if (!ok) { box.innerHTML = `<div class="err">${esc(d.error || "Could not fetch that agent.")}</div>`; return; }
+  fetched = d;
+  const tools = d.tools.length ? d.tools.map((t) => `<label class="check"><input type="checkbox" value="${esc(t)}" ${d.suggested_action_tools.includes(t) ? "checked" : ""}><span class="mono">${esc(t)}</span></label>`).join(" ")
+    : '<span class="small muted">No tools found, so the crash-and-rerun drill will be skipped.</span>';
+  const left = cfg.jobs_left_today;
+  box.innerHTML = `<div class="found">
+      <div class="big">${esc(d.label)}</div>
+      <div class="small muted" style="margin-bottom:14px">${d.files} files${d.has_requirements ? " · its requirements.txt is installed inside the sandbox" : ""}</div>
+      <div class="label">Runs with</div>
+      <input type="text" id="cmd" class="mono" value="${esc(d.command || "python main.py")}" style="width:100%;margin-bottom:14px">
+      <div class="label">Watch these actions for repeats after a crash</div>
+      <div class="row">${tools}</div>
+      <div class="actions" style="border:0;padding-top:4px">
+        <button class="primary" id="runBtn" ${cfg.sandbox_available && left > 0 ? "" : "disabled"}>Run audit</button>
+        <span class="small muted">${cfg.sandbox_available ? `${esc(cfg.audit_eta)} · ${left} run${left === 1 ? "" : "s"} left today` : "Live runs need Token Factory Sandboxes on this server."}</span>
+      </div><div id="runErr"></div></div>`;
+  $("#runBtn").onclick = startAudit;
+}
+
+async function startAudit() {
+  const tools = [...document.querySelectorAll(".found input[type=checkbox]:checked")].map((i) => i.value);
+  const [ok, d] = await api("/api/live", {token: fetched.token, command: $("#cmd").value, action_tools: tools});
+  if (!ok) { $("#runErr").innerHTML = `<div class="err">${esc(d.error || "Could not start the audit.")}</div>`; return; }
+  viewRunning("audit", d.job, fetched.label);
+}
+
+/* ---------------- 3. Running / 5. Fixing ---------------- */
+function viewRunning(kind, jobId, label) {
+  stopTimers(); setWide(false);
+  const audit = kind === "audit";
+  const items = audit ? (cfg.drills || []).map((d) => `<li><span><b>${esc(d.name)}</b><br><span class="small muted">${esc(d.simulates)}</span></span><span class="pill wait">waiting</span></li>`).join("")
+    : ["Nemotron reads the code, the input files and the audit evidence", "It writes two candidate fixes in parallel",
+       "Each fix is re-audited in its own microVM, branched from one checkpoint", "Fixes that still fail go back to Nemotron with their error output"]
+      .map((t) => `<li><span>${esc(t)}</span><span class="pill wait">in progress</span></li>`).join("");
+  app.innerHTML = `<div class="card">
+      <div class="row"><div class="spinner"></div><h2 style="margin:0">${audit ? "Auditing" : "Nemotron is fixing"} ${esc(label)}</h2>
+        <span class="muted small" style="margin-left:auto" id="elapsed">0s</span></div>
+      <p class="muted" style="margin:10px 0 0">${audit
+        ? `Six drills are running inside a Token Factory Sandboxes microVM, ${esc(cfg.audit_eta)}. Results arrive together when it finishes.`
+        : `Every candidate is proven by the same drills before it counts, ${esc(cfg.fix_eta)}.`}</p>
+      <ul class="waitlist">${items}</ul>
+      <div id="runState"></div>
+      <details><summary class="small muted">Technical log</summary><pre class="log" id="log">Starting…</pre></details>
+    </div>`;
+  const t0 = Date.now();
+  ticker = setInterval(() => { const e = $("#elapsed"); if (e) e.textContent = fmt(Math.round((Date.now() - t0) / 1000)); }, 1000);
+  poller = setInterval(async () => {
+    const [ok, j] = await api("/api/jobs/" + jobId);
+    if (!ok) return;
+    const log = $("#log"); if (log) log.textContent = j.log.join("\n") || "Working…";
+    if (j.status === "running") return;
+    stopTimers();
+    if (j.status === "error") {
+      $("#runState").innerHTML = `<div class="err" style="margin-top:14px">${esc(j.error)}</div>
+        <div class="actions"><button class="primary" id="back">Back</button></div>`;
+      $("#back").onclick = audit ? viewHome : () => openRun(lastAuditJob.run, lastAuditJob.id);
+      return;
+    }
+    if (audit) lastAuditJob = {id: jobId, run: j.run};
+    await loadRuns();
+    openRun(j.run, audit ? jobId : null);
+  }, 2500);
+}
+
+/* ---------------- 4. Report + 6. Before/after ---------------- */
+async function openRun(file, auditJobId) {
+  const [ok, run] = await api("/api/runs/" + encodeURIComponent(file));
+  if (!ok) { app.innerHTML = '<div class="card">Could not load that result.</div>'; return; }
+  (run.rounds && run.rounds.length) ? viewResult(run) : viewReport(run, auditJobId);
+}
+
+function agentLine(run) {
+  const m = run.meta || {}, b = run.before;
+  const src = m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.source || m.url)}</a>` : esc(m.source || "");
+  return `<div class="small muted">${src}${b.agent_model ? ` · runs on <span class="mono">${esc(b.agent_model)}</span>` : ""}${b.sandbox ? " · audited in Token Factory Sandboxes" : ""}</div>`;
+}
+
+function drillTable(before, after) {
+  return `<table><thead><tr><th>Drill</th><th>${after ? "Before" : "Result"}</th>${after ? "<th>After Nemotron's fix</th>" : ""}</tr></thead><tbody>
+    ${(before.scenarios || []).map((b) => { const a = after ? scen(after, b.id) : null;
+      return `<tr><td style="width:${after ? 30 : 42}%"><b>${esc(b.name)}</b><div class="why">${esc(b.simulates)}</div></td>
+        <td>${pill(b.passed)}<div class="why" title="${esc(b.verdict)}">${esc(shortWhy(b.verdict))}</div>${drillTl(b)}</td>
+        ${after ? `<td>${pill(a.passed)}<div class="why" title="${esc(a.verdict)}">${esc(shortWhy(a.verdict))}</div>${drillTl(a)}</td>` : ""}</tr>`; }).join("")}
+    </tbody></table>
+    <div class="small muted" style="margin-top:8px">Each square is one call to Token Factory: <span style="color:var(--pass)">■</span> answered
+      <span style="color:var(--fail)">■</span> fault injected <span style="color:var(--warn)">■</span> garbled tool call <span style="color:#6e1009">■</span> rejected by the provider</div>`;
+}
+
+function duplicateCard(audit, after) {
+  const s = scen(audit, "crash_after_action");
+  const pair = (s.pairs || []).find((p) => p.triggered);
+  if (!pair) return "";
+  const first = pair.crash_run.actions.find((a) => a.executed), again = pair.rerun.actions[0];
+  if (!first) return "";
+  const ok = again && !again.executed;
+  return `<div class="card dup ${ok ? "ok" : ""}"><div class="label">${after ? "After the fix" : "What happened"}: crash after acting, then rerun</div>
+    <div>The agent performed its action, then the provider went down and it crashed:</div><blockquote>${esc(actionText(first))}</blockquote>
+    ${!again ? "<p>On the rerun it didn't try the action.</p>" : ok ? `<p style="margin:10px 0 0">On the rerun its own check stopped the repeat:</p><blockquote class="mono">${esc(again.result)}</blockquote>`
+      : `<p style="margin:10px 0 0">On the rerun it performed it <b>again</b>, worded differently:</p><blockquote>${esc(actionText(again))}</blockquote>`}</div>`;
+}
+
+function viewReport(run, auditJobId) {
+  stopTimers(); setWide(false);
+  const b = run.before, failed = failedIds(b), canFix = auditJobId && failed.length;
+  app.innerHTML = `
+    <div class="label">Audit report</div><h2>${esc((run.meta || {}).title || run.agent)}</h2>${agentLine(run)}
+    <div class="card" style="margin-top:18px">
+      <div class="scoreline"><div class="grade ${esc(b.grade)}">${esc(b.grade)}</div>
+        <div><div class="big">${esc(b.score)}/100</div><div class="verdictline">${failed.length
+          ? `<b class="f">Found:</b> ${esc(failed.map((id) => PLAIN[id] || id).join("; "))}.` : '<b class="p">No failures found</b> in these drills.'}</div></div></div>
+      ${drillTable(b, null)}
+      ${canFix ? `<div class="actions"><button class="primary" id="fixBtn" ${cfg.fix_available ? "" : "disabled"}>Let Nemotron fix it</button>
+        ${cfg.fix_requires_code ? '<input type="password" id="code" placeholder="access code">' : ""}
+        <span class="small muted">${esc(cfg.fix_eta)}</span><button class="link" id="again" style="margin-left:auto">Audit another agent</button></div><div id="fixErr"></div>`
+        : `<div class="actions"><button class="primary" id="again">Audit an agent</button>${!auditJobId ? '<span class="small muted">This is a saved audit.</span>' : ""}</div>`}
+    </div>
+    ${duplicateCard(b, false)}`;
+  $("#again").onclick = viewHome;
+  if (canFix) $("#fixBtn").onclick = async () => {
+    const [ok, d] = await api("/api/fix", {job: auditJobId, code: ($("#code") || {}).value});
+    if (!ok) { $("#fixErr").innerHTML = `<div class="err">${esc(d.error || "Could not start the fix.")}</div>`; return; }
+    viewRunning("fix", d.job, (run.meta || {}).title || run.agent);
+  };
+}
+
+function bestCandidate(run) {
+  for (const rnd of run.rounds || []) for (const c of rnd) if (run.best && c.round === run.best.round && c.candidate === run.best.candidate) return c;
+  return null;
+}
+
+function loopBand(run, before, after) {
+  const cands = (run.rounds || []).flat(), audited = cands.filter((c) => c.audit);
+  const vms = before.sandbox ? 1 + audited.filter((c) => c.sandbox || (c.audit && c.audit.sandbox)).length : 0;
+  const drills = (before.scenarios || []).length, nf = failedIds(before).length;
+  return `<div class="loop">
+    <div class="stage"><div class="k">1 · Break</div><div class="n fail">${nf} failure${nf === 1 ? "" : "s"}</div><div class="d">${drills} drills on real Token Factory traffic. Grade ${esc(before.grade)} (${esc(before.score)}/100).</div></div><div class="arr">→</div>
+    <div class="stage"><div class="k">2 · Fix</div><div class="n">${cands.length} fixes</div><div class="d">Written by ${esc((run.model || "").split("/").pop())} over ${(run.rounds || []).length} rounds, repairing its own mistakes.</div></div><div class="arr">→</div>
+    <div class="stage"><div class="k">3 · Prove</div><div class="n ${after && after.grade === "A" ? "pass" : ""}">${after ? esc(after.grade) + " " + esc(after.score) : "–"}</div><div class="d">The same ${drills} drills, re-run on the chosen fix.</div></div><div class="arr">→</div>
+    <div class="stage"><div class="k">4 · Isolate</div><div class="n">${vms ? vms + " microVMs" : "Local"}</div><div class="d">${vms ? "Every audit in its own Token Factory Sandboxes microVM." : "Run with Sandboxes to isolate every audit."}</div></div></div>`;
 }
 
 function treeSvg(run) {
@@ -231,276 +309,80 @@ function treeSvg(run) {
   if (!rounds.length) return "";
   const nCand = Math.max(...rounds.map((r) => Math.max(...r.map((c) => c.candidate))));
   const colW = 210, rowH = 74, x0 = 20, y0 = 34, nodeW = 168, nodeH = 50;
-  const W = x0 + colW * (rounds.length + 1), H = y0 + rowH * nCand + 10;
-  const rootY = y0 + (rowH * nCand) / 2 - nodeH / 2;
+  const W = x0 + colW * (rounds.length + 1), H = y0 + rowH * nCand + 10, rootY = y0 + (rowH * nCand) / 2 - nodeH / 2;
   const isBest = (c) => run.best && c.round === run.best.round && c.candidate === run.best.candidate;
   const color = (c) => !c.audit || c.smoke_failed ? "var(--fail)" : c.audit.grade === "A" ? "var(--pass)" : c.audit.grade === "B" ? "var(--warn)" : "var(--fail)";
-  const sb = run.before && run.before.sandbox;
-  let out = `<svg class="tree" viewBox="0 0 ${W} ${H}" width="${W}" style="max-width:100%;height:auto" role="img" aria-label="Fix attempts as branches">`;
+  const sb = run.before && run.before.sandbox, pos = {};
+  let out = `<svg viewBox="0 0 ${W} ${H}" width="${W}" style="max-width:100%;height:auto" role="img" aria-label="Fix attempts as branches">`;
   out += `<text x="${x0}" y="16" font-size="11" fill="var(--muted)">${sb ? "AGENT CHECKPOINT" : "ORIGINAL AGENT"}</text>`;
   rounds.forEach((r, i) => { out += `<text x="${x0 + colW * (i + 1)}" y="16" font-size="11" fill="var(--muted)">ROUND ${i + 1}${i ? " · REPAIR" : " · FROM EVIDENCE"}</text>`; });
-  const pos = {};
   rounds.forEach((r, i) => r.forEach((c) => { pos[`${c.round}-${c.candidate}`] = {x: x0 + colW * (i + 1), y: y0 + rowH * (c.candidate - 1)}; }));
   rounds.forEach((r, i) => r.forEach((c) => {
-    const p = pos[`${c.round}-${c.candidate}`];
-    const from = i === 0 ? {x: x0, y: rootY} : (pos[`${c.round - 1}-${c.candidate}`] || {x: x0, y: rootY});
+    const p = pos[`${c.round}-${c.candidate}`], from = i === 0 ? {x: x0, y: rootY} : (pos[`${c.round - 1}-${c.candidate}`] || {x: x0, y: rootY});
     const x1 = from.x + nodeW, y1 = from.y + nodeH / 2, x2 = p.x, y2 = p.y + nodeH / 2, mx = (x1 + x2) / 2;
     out += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="${isBest(c) ? "var(--pass)" : "var(--line)"}" stroke-width="${isBest(c) ? 2.5 : 1.5}"/>`;
   }));
   out += `<rect x="${x0}" y="${rootY}" width="${nodeW}" height="${nodeH}" rx="10" fill="var(--paper)" stroke="var(--ink)"/>
     <text x="${x0 + 12}" y="${rootY + 21}" font-size="13" font-weight="600" fill="var(--ink)">${esc(run.before.grade)} ${esc(run.before.score)} · as written</text>
-    <text x="${x0 + 12}" y="${rootY + 38}" font-size="11" fill="var(--muted)" font-family="var(--mono)">${sb ? esc(String(sb.agent_checkpoint).slice(0, 8)) + "…" : "local copy"}</text>`;
+    <text x="${x0 + 12}" y="${rootY + 38}" font-size="11" fill="var(--muted)">${sb ? esc(String(sb.agent_checkpoint).slice(0, 8)) + "…" : "local copy"}</text>`;
   rounds.forEach((r) => r.forEach((c) => {
-    const p = pos[`${c.round}-${c.candidate}`], best = isBest(c);
+    const p = pos[`${c.round}-${c.candidate}`], best = isBest(c), vm = c.sandbox || (c.audit && c.audit.sandbox);
     const label = !c.audit ? "rejected" : c.smoke_failed ? "broke normal run" : `${c.audit.grade} ${c.audit.score}`;
-    const vm = c.sandbox || (c.audit && c.audit.sandbox);
     out += `<g><title>${esc((c.changes || []).join(" | ") || c.problem || "")}</title>
       <rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="10" fill="${best ? "var(--pass-bg)" : "var(--card)"}" stroke="${color(c)}" stroke-width="${best ? 2.5 : 1.5}"/>
       <text x="${p.x + 12}" y="${p.y + 21}" font-size="13" font-weight="600" fill="${color(c)}">Fix ${c.candidate} · ${esc(label)}${best ? "  ✓" : ""}</text>
-      <text x="${p.x + 12}" y="${p.y + 38}" font-size="11" fill="var(--muted)" font-family="var(--mono)">${vm && vm.result_image ? "microVM " + esc(String(vm.result_image).slice(0, 8)) + "…" : (c.changed_lines ? c.changed_lines + " lines changed" : "")}</text></g>`;
+      <text x="${p.x + 12}" y="${p.y + 38}" font-size="11" fill="var(--muted)">${vm && vm.result_image ? "microVM " + esc(String(vm.result_image).slice(0, 8)) + "…" : (c.changed_lines ? c.changed_lines + " lines changed" : "")}</text></g>`;
   }));
   return out + "</svg>";
 }
 
-function sandboxNote(before, after) {
-  const sb = (before && before.sandbox) || (after && after.sandbox);
-  if (!sb) return '<p class="sim" style="margin:-8px 0 16px;font-size:13px;color:var(--muted)">Ran on the local machine.</p>';
-  return `<div class="card" style="margin-bottom:16px;border-color:var(--accent)"><div class="label">Ran in Nebius Token Factory Sandboxes</div>
-    <div style="font-size:14px">Every audit ran inside its own microVM. Each candidate fix was a branch of the same agent checkpoint
-    <span class="mono">${esc(sb.agent_checkpoint || "")}</span>, with only the patched file changed.</div></div>`;
-}
-
-function scen(audit, id) { return (audit.scenarios || []).find((s) => s.id === id) || {}; }
-
-function headline(audit) {
-  const failed = audit.failed || [];
-  if (!failed.length) return "Passes every drill.";
-  return `Fails ${failed.length} of ${failed.length + (audit.passed || []).length} drills: ${failed.join(", ").toLowerCase()}.`;
-}
-
-function bestCandidate(run) {
-  if (!run.best) return null;
-  for (const rnd of run.rounds || []) for (const c of rnd)
-    if (c.round === run.best.round && c.candidate === run.best.candidate) return c;
-  return null;
-}
-
 function diffHtml(diff) {
-  return (diff || "").split("\n").map((l) => {
-    const cls = l.startsWith("@@") ? "hunk" : (l.startsWith("+") && !l.startsWith("+++")) ? "add"
-              : (l.startsWith("-") && !l.startsWith("---")) ? "del" : "";
-    return cls ? `<span class="${cls}">${esc(l)}</span>` : esc(l);
-  }).join("\n");
+  return (diff || "").split("\n").map((l) => { const c = l.startsWith("@@") ? "hunk" : (l.startsWith("+") && !l.startsWith("+++")) ? "add" : (l.startsWith("-") && !l.startsWith("---")) ? "del" : "";
+    return c ? `<span class="${c}">${esc(l)}</span>` : esc(l); }).join("\n");
 }
 
-function duplicateCard(audit, after) {
-  const s = scen(audit, "crash_after_action");
-  const pair = (s.pairs || []).find((p) => p.triggered) || (s.pairs || [])[0];
-  if (!pair) return "";
-  const first = pair.crash_run.actions.find((a) => a.executed);
-  const again = pair.rerun.actions[0];
-  if (!first) return "";
-  const ok = again && !again.executed;
-  const title = after ? "After the fix: crash, then rerun" : "Before: crash, then rerun";
-  const second = !again ? "<p>The rerun did not try the action.</p>"
-    : ok ? `<p>On the rerun the agent tried again and its own check stopped it:</p><blockquote class="mono">${esc(again.result)}</blockquote>`
-         : `<p>The rerun performed it <b>again</b>, worded differently:</p><blockquote>${esc(actionText(again))}</blockquote>`;
-  return `<div class="card dup ${ok ? "ok" : ""}">
-    <div class="label">${title}</div>
-    <p style="margin:4px 0 0">The agent performed its action, then the provider went down and it crashed:</p>
-    <blockquote>${esc(actionText(first))}</blockquote>
-    ${second}
-    <p class="sim" style="margin:10px 0 0;color:var(--muted);font-size:13px">${esc(s.verdict || "")}</p>
-  </div>`;
-}
-
-function render(run) {
-  const before = run.before, meta = run.meta || {}, best = bestCandidate(run), after = best && best.audit;
-  const cmp = run.comparison || {};
-  const tokens = (a) => a ? a.tokens.prompt + a.tokens.completion : 0;
-  const genTokens = (run.rounds || []).flat().reduce((n, c) => n + (c.tokens ? c.tokens.prompt + c.tokens.completion : 0), 0);
-  const allRuns = (run.rounds || []).flat().filter((c) => c.audit).reduce((n, c) => n + tokens(c.audit), 0) + tokens(before);
-
-  const drillRows = (before.scenarios || []).map((b) => {
-    const a = after ? scen(after, b.id) : null;
-    const pairTl = (x) => { const p = (x.pairs || []).find((q) => q.triggered) || (x.pairs || [])[0];
-      return p ? `<div class="tlrow"><span>crash run</span>${timeline(p.crash_run)}</div><div class="tlrow"><span>rerun</span>${timeline(p.rerun)}</div>` : ""; };
-    const tlB = b.runs ? timeline(b.runs[0]) : pairTl(b);
-    const tlA = a ? (a.runs ? timeline(a.runs[0]) : pairTl(a)) : "";
-    return `<tr>
-      <td style="width:28%"><b>${esc(b.name)}</b><div class="sim">${esc(b.simulates)}</div></td>
-      <td style="width:36%">${pill(b.passed)}<div class="verdict" title="${esc(b.verdict)}">${esc(shortVerdict(b.verdict))}</div>${tlB}</td>
-      <td style="width:36%">${a ? pill(a.passed) + `<div class="verdict" title="${esc(a.verdict)}">${esc(shortVerdict(a.verdict))}</div>${tlA}` : '<span class="sim">No fix yet</span>'}</td>
-    </tr>`;
-  }).join("");
-
-  const rounds = (run.rounds || []).map((rnd, i) => `<div class="round"><span class="r">Round ${i + 1}</span>${rnd.map((c) => {
-      const isBest = run.best && c.round === run.best.round && c.candidate === run.best.candidate;
-      if (!c.audit) return `<span class="cand bad" title="${esc(c.problem)}">Fix ${c.candidate}: rejected</span>`;
-      if (c.smoke_failed) return `<span class="cand bad" title="${esc(c.audit.scenarios[0].verdict)}">Fix ${c.candidate}: broke the normal run</span>`;
-      return `<span class="cand ${isBest ? "best" : ""}">Fix ${c.candidate}: ${c.audit.grade} (${c.audit.score})${isBest ? " ✓ chosen" : ""}</span>`;
-    }).join("")}</div>`).join("");
-
-  $("#app").innerHTML = heroHtml(run, before, after) + `
-  <section id="agent">
-    <h2><span class="n">1</span>The agent</h2>
-    <p class="lede">A real agent, run unmodified. ResilienceGuard reroutes its calls to Token Factory through a proxy
-      that can misbehave on purpose, like a fire drill.</p>
-    <div class="grid g2">
-      <div class="card">
-        <div class="label">Agent</div>
-        <div style="font-size:18px;font-weight:600">${esc(meta.title || run.agent)}</div>
-        <p style="margin:6px 0 12px">${esc(meta.does || "")}</p>
-        <div class="label">Source</div><div class="mono">${meta.url ? `<a href="${esc(meta.url)}" target="_blank" rel="noopener">${esc(meta.source)}</a>` : esc(meta.source || "")}</div>
-      </div>
-      <div class="card">
-        <div class="label">Runs on</div><div class="mono">${esc(before.agent_model || "nvidia/nemotron-3-super-120b-a12b")} via Token Factory</div>
-        <div class="label" style="margin-top:12px">Framework</div><div>${esc(meta.framework || "")}</div>
-        <div class="label" style="margin-top:12px">Real-world action we watch</div><div class="mono">${esc(meta.action || before.action_tools.join(", "))}</div>
-      </div>
-    </div>
-    <div class="card" style="margin-top:14px">
-      <div class="flow"><span class="node">Agent, unmodified</span><span class="arrow">→</span>
-        <span class="node proxy">ResilienceGuard proxy: outages · rate limits · garbled tool calls · crash after acting</span>
-        <span class="arrow">→</span><span class="node">Nebius Token Factory · Nemotron</span></div>
-    </div>
-  </section>
-
-  <section id="audit">
-    <h2><span class="n">2</span>The audit</h2>
-    <p class="lede">Six drills, each in a fresh copy of the agent with its own proxy. Every result below comes from the run itself:
-      exit codes, the proxy's call log, and the tool results the agent sent back.</p>
-    ${sandboxNote(before, after)}
-    <div class="scoreline">
-      <div class="grade ${esc(before.grade)}">${esc(before.grade)}</div>
-      <div><div class="big">${esc(before.score)}/100 before the fix</div><div style="color:var(--muted)">${esc(headline(before))}</div></div>
-      ${after ? `<div style="margin-left:auto;display:flex;align-items:center;gap:18px"><div style="text-align:right"><div class="big">${esc(after.score)}/100 after</div><div style="color:var(--muted)">${esc(headline(after))}</div></div><div class="grade ${esc(after.grade)}">${esc(after.grade)}</div></div>` : ""}
-    </div>
-    <div class="card" style="padding:6px 14px">
-      <table><thead><tr><th>Drill</th><th>Before</th><th>After Nemotron's fix</th></tr></thead><tbody>${drillRows}</tbody></table>
-      <div class="legend">Each square is one call to the provider:
-        <span><span class="tl"><i class="ok"></i></span>answered</span>
-        <span><span class="tl"><i class="injected_error"></i></span>fault injected</span>
-        <span><span class="tl"><i class="corrupted"></i></span>garbled tool call</span>
-        <span><span class="tl"><i class="upstream_error"></i></span>provider rejected the request</span></div>
-    </div>
-    <div class="grid g2" style="margin-top:14px">${duplicateCard(before, false)}${after ? duplicateCard(after, true) : ""}</div>
-  </section>
-
-  <section id="fix">
-    <h2><span class="n">3</span>Nemotron's fix</h2>
-    <p class="lede">${esc(run.model)} read the agent's code, its input files and the audit evidence, wrote candidate fixes in parallel,
-      and each was re-audited. Candidates that still failed went back to Nemotron with their own error output.</p>
-    ${best ? `
-    <div class="card" style="margin-bottom:14px"><div class="label">Every fix attempt is a branch${run.before.sandbox ? " of the same Sandboxes checkpoint" : ""}; repairs grow from the attempt before. Hover a node for its changes.</div>
-      <div style="margin-top:10px;overflow-x:auto">${treeSvg(run)}</div></div>
-    <div>
-      <div class="card"><div class="label">What changed, round by round (Nemotron's own words)</div>
-        ${lineageChanges(run).map((g) => `<div class="sim" style="margin-top:10px;font-weight:600">Round ${g.round}</div>
-          <ul class="changes">${g.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`).join("")}</div>
-    </div>
-    <div class="card" style="margin-top:14px">
-      <details><summary>The diff: ${esc(best.changed_lines)} lines in ${esc(run.file)}</summary><pre class="diff">${diffHtml(best.diff)}</pre></details>
-    </div>
-    <div class="card" style="margin-top:14px">
-      <div class="label">Before merging, a person should still check</div>
-      <ul class="checklist" style="margin:8px 0 0;padding-left:18px">
-        <li>The duplicate check's key: is it as narrow as it should be? If it covers the whole incident, a later legitimate update for the same incident is skipped too.</li>
+function viewResult(run) {
+  stopTimers(); setWide(true);
+  const before = run.before, best = bestCandidate(run), after = best && best.audit;
+  const groups = []; for (const rnd of run.rounds || []) for (const c of rnd) if (best && c.candidate === best.candidate && c.round <= best.round && (c.changes || []).length) groups.push(c);
+  app.innerHTML = `
+    <div class="label">Audit and fix</div>
+    <h2>${esc((run.meta || {}).title || run.agent)}: ${esc(before.grade)} ${esc(before.score)} → ${after ? esc(after.grade) + " " + esc(after.score) : "no passing fix"}</h2>${agentLine(run)}
+    <div style="margin-top:18px">${loopBand(run, before, after)}</div>
+    <div class="card">${drillTable(before, after)}</div>
+    <div class="grid2">${duplicateCard(before, false)}${after ? duplicateCard(after, true) : ""}</div>
+    <details class="card"><summary>Show details: how Nemotron got there, the diff, and what to review</summary>
+      <div class="label" style="margin-top:16px">Every fix attempt is a branch${before.sandbox ? " of one Sandboxes checkpoint" : ""}; repairs grow from the attempt before</div>
+      <div style="overflow-x:auto">${treeSvg(run)}</div>
+      ${groups.map((c) => `<div class="label" style="margin-top:14px">Round ${c.round}: what Nemotron changed</div><ul class="changes">${c.changes.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`).join("")}
+      ${best ? `<div class="label" style="margin-top:14px">The diff: ${esc(best.changed_lines)} lines in ${esc(run.file)}</div><pre class="diff">${diffHtml(best.diff)}</pre>` : ""}
+      <div class="label" style="margin-top:14px">Before merging, a person should still check</div>
+      <ul class="changes"><li>The duplicate check's key: is it as narrow as it should be? If it covers the whole incident, a later legitimate update is skipped too.</li>
         <li>Exactly-once needs the downstream system: a crash between acting and writing the ledger can still repeat the action.</li>
-        <li>Each drill ran once (the crash-and-rerun drill three times). A pass is evidence, not a guarantee.</li>
-      </ul>
-    </div>` : '<div class="card">No fix in this run.</div>'}
-  </section>
-
-  <section>
-    <div class="card"><div class="stats">
-      <div><b>${esc(before.audit_seconds)}s</b>first audit</div>
-      <div><b>${(run.rounds || []).length}</b>fix rounds</div>
-      <div><b>${allRuns.toLocaleString()}</b>tokens used by the agent across all drills</div>
-      <div><b>${genTokens.toLocaleString()}</b>tokens Nemotron used writing fixes</div>
-      <div><b>${esc(before.timestamp)}</b>run started</div>
-    </div></div>
-  </section>`;
+        <li>Each drill ran once (crash-and-rerun up to three times). A pass is evidence, not a guarantee.</li></ul>
+    </details>
+    <div class="actions" style="border:0"><button class="primary" id="again">Audit an agent</button></div>`;
+  $("#again").onclick = viewHome;
 }
 
-async function loadRun(file) {
-  const r = await fetch("/api/runs/" + encodeURIComponent(file));
-  if (!r.ok) { $("#app").innerHTML = '<div class="empty">Could not load that run.</div>'; return; }
-  render(await r.json());
+/* ---------------- Example results ---------------- */
+let runs = [];
+async function loadRuns() { const [ok, d] = await api("/api/runs"); runs = ok ? d : []; }
+async function viewExample() {
+  stopTimers(); await loadRuns();
+  const picker = $("#runPicker");
+  if (!runs.length) { app.innerHTML = '<div class="card">No saved results yet.</div>'; return; }
+  picker.innerHTML = runs.map((r) => `<option value="${esc(r.file)}">${esc(r.agent)} · ${esc(r.before)} → ${esc(r.after)}</option>`).join("");
+  picker.style.display = ""; picker.onchange = () => openRun(picker.value, null);
+  const first = runs.find((r) => r.after !== "audit only") || runs[0];
+  picker.value = first.file; openRun(first.file, null);
 }
 
 async function init() {
-  const runs = await (await fetch("/api/runs")).json();
-  const picker = $("#runPicker");
-  picker.innerHTML = runs.map((r) => `<option value="${esc(r.file)}">${esc(r.agent)} · ${esc(r.before)} → ${esc(r.after)} · ${esc(r.file.replace(".json", ""))}</option>`).join("");
-  picker.onchange = () => loadRun(picker.value);
-  if (runs.length) loadRun(runs[0].file);
-  else $("#app").innerHTML = '<div class="empty">No saved runs yet. Use “Audit an agent…” to create one.</div>';
-
+  const [, c] = await api("/api/config"); cfg = c || {};
+  $("#home").onclick = viewHome; $("#navAudit").onclick = viewHome; $("#navExample").onclick = viewExample;
+  location.hash === "#example" ? viewExample() : viewHome();
 }
-
-let poller = null, fetched = null, cfg = {};
-
-async function loadConfig() {
-  cfg = await (await fetch("/api/config")).json();
-  const src = $("#liveSource");
-  src.innerHTML = Object.entries(cfg.presets).map(([k, v]) => `<option value="${esc(k)}">Cookbook: ${esc(v.title)}</option>`).join("")
-    + '<option value="github">Your GitHub agent…</option>';
-  const sync = () => { $("#liveUrl").style.display = src.value === "github" ? "" : "none"; };
-  src.onchange = () => { sync(); $("#liveForm").style.display = "none"; $("#liveInfo").textContent = ""; };
-  sync();
-  $("#liveCode").style.display = cfg.fix_requires_code ? "" : "none";
-  $("#liveFix").disabled = !cfg.fix_available;
-  $("#liveStatus").textContent = (cfg.sandbox_available ? "Audits run in Token Factory Sandboxes. " : "Sandboxes aren't configured on this server, so live runs are off. ")
-    + `${cfg.jobs_left_today} run(s) left today` + (cfg.busy ? " · a run is in progress" : "")
-    + (cfg.fix_requires_code ? " · fixes need the access code" : "") + `.`;
-}
-
-async function post(url, body) {
-  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-  return [r.ok, await r.json()];
-}
-
-$("#liveBtn").onclick = async () => { await loadConfig(); $("#liveDialog").showModal(); };
-$("#liveClose").onclick = () => $("#liveDialog").close();
-$("#liveFetch").onclick = async () => {
-  const src = $("#liveSource").value;
-  $("#liveInfo").textContent = "Fetching from GitHub…"; $("#liveForm").style.display = "none";
-  const [ok, d] = await post("/api/inspect", src === "github" ? {url: $("#liveUrl").value} : {preset: src});
-  if (!ok) { $("#liveInfo").textContent = d.error || "Could not fetch that agent."; return; }
-  fetched = d;
-  $("#liveInfo").innerHTML = `Fetched <b>${esc(d.label)}</b>: ${d.files} files${d.has_requirements ? ", requirements.txt (installed inside the sandbox)" : ""}.
-    ${d.entry ? "" : "No entry file found: enter the command."}`;
-  $("#liveCmd").value = d.command || "python main.py";
-  $("#liveTools").innerHTML = d.tools.length ? d.tools.map((t) =>
-    `<label><input type="checkbox" value="${esc(t)}" ${d.suggested_action_tools.includes(t) ? "checked" : ""}> <span class="mono">${esc(t)}</span></label>`).join("")
-    : '<span class="sim">No @tool functions found. The crash-and-rerun drill will be skipped.</span>';
-  $("#liveForm").style.display = "";
-};
-
-async function startRun(fix) {
-  if (!fetched) return;
-  const log = $("#liveLog");
-  const tools = [...document.querySelectorAll("#liveTools input:checked")].map((i) => i.value);
-  const [ok, d] = await post("/api/live", {token: fetched.token, command: $("#liveCmd").value, action_tools: tools,
-                                           fix, code: $("#liveCode").value});
-  if (!ok) { log.textContent = d.error || "Could not start."; return; }
-  log.textContent = "Started. The first sandbox run can take a minute while the runtime image loads…";
-  clearInterval(poller);
-  poller = setInterval(async () => {
-    const j = await (await fetch("/api/jobs/" + d.job)).json();
-    log.textContent = j.log.join("\n") || "Working…";
-    log.scrollTop = log.scrollHeight;
-    if (j.status !== "running") {
-      clearInterval(poller);
-      log.textContent += j.status === "done" ? "\n\nDone. Loading the new run…" : "\n\nFailed: " + j.error;
-      if (j.status === "done") { await init(); $("#runPicker").value = j.run; loadRun(j.run); }
-    }
-  }, 2500);
-}
-$("#liveAudit").onclick = () => startRun(false);
-$("#liveFix").onclick = () => startRun(true);
-
 init();
 </script>
 </body>
