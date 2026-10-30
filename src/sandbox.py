@@ -127,7 +127,10 @@ class SandboxRunner:
         client = self.client_factory()
         runtime = client.images.use(self.runtime_image(log), strict=True)
         files = {f"/agent/{rel}": data for rel, data in agent_files(spec.workdir).items()}
-        res = runtime.run(shell="true", files=files, disposable=False, timeout=300).wait()
+        # The agent's own dependencies are installed inside the microVM, never on this machine.
+        setup = ("pip install --no-cache-dir -q -r /agent/requirements.txt"
+                 if "/agent/requirements.txt" in files else "true")
+        res = runtime.run(shell=setup, files=files, disposable=False, timeout=900).wait()
         if res.exit_code != 0 or not res.uuid:
             raise RuntimeError(f"Agent checkpoint failed: {_text(res.stderr)[-500:]}")
         uuid = str(res.uuid)  # the SDK returns uuid.UUID objects

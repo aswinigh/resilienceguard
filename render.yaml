@@ -1,0 +1,27 @@
+# Render Blueprint: hosted ResilienceGuard Studio (free plan).
+# Secrets (API_KEY, PROJECT_ID, RG_ACCESS_CODE) are entered in the Render dashboard, never committed.
+services:
+  - type: web
+    name: resilienceguard
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /api/config
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: RG_HOSTED
+        value: "1"
+      - key: RG_MAX_JOBS_PER_DAY
+        value: "10"
+      - key: API_KEY
+        sync: false
+      - key: PROJECT_ID
+        sync: false
+      - key: RG_ACCESS_CODE
+        sync: false
+      # Optional: a GitHub token with no scopes, so fetching agents isn't limited to GitHub's
+      # 60 unauthenticated requests per hour (Render's free tier shares outbound IPs).
+      - key: GITHUB_TOKEN
+        sync: false

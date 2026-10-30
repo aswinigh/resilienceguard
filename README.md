@@ -157,6 +157,26 @@ export OPENAI_BASE_URL=http://localhost:8787/v1     # then run any agent
 > agent never sees the real API key. The studio listens on 127.0.0.1 and only accepts
 > live-run requests from its own page.
 
+## Hosted demo: audit any GitHub agent
+
+The studio's **Audit an agent…** button takes a Nebius cookbook agent or a link to a public GitHub folder
+(`https://github.com/owner/repo/tree/main/path/to/agent`). It lists the repository with one GitHub API call,
+downloads only that folder, detects the entry file and the `@tool` functions that look like real-world
+actions (for you to confirm), and runs the audit, optionally followed by the Nemotron fix loop.
+
+Fetched code never runs on the studio's server: live runs require Token Factory Sandboxes, and the agent's
+own `requirements.txt` is installed inside its microVM. Works for Python agents that reach Token Factory
+through `httpx`-based clients (OpenAI SDK, LangChain, LiteLLM, ChatNebius).
+
+Deploying it on Render (free plan) uses the included [`render.yaml`](render.yaml):
+
+1. In Render, choose **New > Blueprint** and select this repository.
+2. Enter the secrets when prompted: `API_KEY` and `PROJECT_ID` (Token Factory, with Sandboxes enabled),
+   `RG_ACCESS_CODE` (unlocks the fix loop), and optionally `GITHUB_TOKEN` (a token with no scopes, to avoid
+   GitHub's 60 requests per hour limit for unauthenticated calls).
+3. Deploy. Hosted mode (`RG_HOSTED=1`) means: anyone can view saved runs and start audits, up to
+   `RG_MAX_JOBS_PER_DAY` runs per day and one at a time; the Nemotron fix loop needs the access code.
+
 ## How it compares
 
 | | Finds the problem | Survives brief outages | Fixes garbled-call poisoning and repeated actions | Proves the fix |
@@ -191,13 +211,14 @@ including the failures a gateway can't reach.
 
 ```
 app.py                  studio server          studio/index.html   studio page
+src/github_fetch.py     fetch an agent folder from GitHub       render.yaml   hosted deploy
 src/proxy.py            fault-injection proxy  src/rg_shim/        no-code-change launcher shim
 src/agent_audit.py      the six drills         src/fixer.py        Nemotron fix loop
 src/guard.py            circuit breaker        src/config/         fault rules
 src/sandbox.py          Token Factory Sandboxes runner (runtime image, agent checkpoint, branches)
 src/interceptor/        in-process fault injection for the OpenAI Python SDK (library mode)
 runs/                   saved real runs        scripts/            setup check, research spikes, save_run
-tests/                  78 tests (fake model, stand-in agents, fake Sandboxes client; no network needed)
+tests/                  85 tests (fake model, stand-in agents, fake Sandboxes and GitHub; no network needed)
 ```
 
 ```bash

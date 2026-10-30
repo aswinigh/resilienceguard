@@ -283,6 +283,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--sandbox", action="store_true",
                     help="audit each candidate in its own Token Factory Sandboxes branch")
+    ap.add_argument("--name", help="display name for the agent in reports")
     args = ap.parse_args(argv)
 
     _load_env_file()
@@ -297,10 +298,10 @@ def main(argv: list[str] | None = None) -> None:
         cmd = shlex.split(args.cmd)
         if cmd and cmd[0] in ("python", "python3"):
             cmd[0] = sys.executable
-        spec = AgentSpec(Path(args.workdir).name, Path(args.workdir).resolve(), cmd, args.action_tool,
+        spec = AgentSpec(args.name or Path(args.workdir).name, Path(args.workdir).resolve(), cmd, args.action_tool,
                          {"NEBIUS_MODEL": args.agent_model})
     audit = json.loads(Path(args.audit).read_text())
-    run_dir = RUNS_DIR / f"{spec.name}_{time.strftime('%Y%m%d_%H%M%S')}"
+    run_dir = RUNS_DIR / f"{re.sub(r'[^A-Za-z0-9_.-]+', '_', spec.name)}_{time.strftime('%Y%m%d_%H%M%S')}"
     run_dir.mkdir(parents=True, exist_ok=True)
     client = openai.OpenAI(base_url=TOKEN_FACTORY, api_key=key, max_retries=4, timeout=600)
     sandbox = None

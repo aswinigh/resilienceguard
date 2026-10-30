@@ -40,12 +40,35 @@ def test_run_names_cannot_escape_the_runs_folder(base):
 
 
 def test_live_runs_only_from_the_studio_page(base):
-    body = json.dumps({"agent": "incident_response"})
+    body = json.dumps({"token": "nope"})
     r = httpx.post(base + "/api/live", content=body,
                    headers={"Content-Type": "application/json", "Origin": "https://evil.example"})
     assert r.status_code == 403
     r = httpx.post(base + "/api/live", content=body, headers={"Content-Type": "text/plain"})
     assert r.status_code == 403
-    r = httpx.post(base + "/api/live", content=json.dumps({"agent": "nope"}),
-                   headers={"Content-Type": "application/json"})
-    assert r.status_code == 400
+    r = httpx.post(base + "/api/live", content=body, headers={"Content-Type": "application/json"})
+    assert r.status_code == 400 and "Fetch the agent first" in r.json()["error"]
+
+
+def test_config_reports_limits(base):
+    cfg = httpx.get(base + "/api/config").json()
+    assert set(cfg) >= {"hosted", "fix_available", "sandbox_available", "jobs_left_today", "presets"}
+    assert "incident_response" in cfg["presets"]
+
+
+def test_hosted_rules(monkeypatch, base):
+    """Fix needs the code, fetched code never runs without Sandboxes, commands are validated."""
+    monkeypatch.setattr(app, "HOSTED", True)
+    monkeypatch.setattr(app, "ACCESS_CODE", "s3cret")
+    app.INSPECTED["t1"] = {"label": "acme/bot", "url": "https://github.com/acme/bot", "workdir": "/tmp/x",
+                           "command": "python main.py", "preset": None}
+    hdr = {"Content-Type": "application/json"}
+    post = lambda body: httpx.post(base + "/api/live", content=json.dumps(body), headers=hdr)  # noqa: E731
+    assert post({"token": "t1", "fix": True, "code": "wrong"}).status_code == 403
+    assert post({"token": "t1", "command": "rm -rf /"}).status_code == 400
+    monkeypatch.setattr(app, "sandbox_available", lambda: False)
+    assert post({"token": "t1"}).status_code == 503
+    # hosted: any Host is fine but the Origin must match it
+    r = httpx.post(base + "/api/live", content=json.dumps({"token": "t1"}),
+                   headers={**hdr, "Origin": "https://evil.example"})
+    assert r.status_code == 403

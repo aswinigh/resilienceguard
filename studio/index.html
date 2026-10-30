@@ -121,23 +121,39 @@
   <nav class="steps"><a href="#agent"><b>1</b>Agent</a><a href="#audit"><b>2</b>Audit</a><a href="#fix"><b>3</b>Fix</a></nav>
   <div class="controls">
     <select id="runPicker" aria-label="Saved run"></select>
-    <button class="primary" id="liveBtn">Run live…</button>
+    <button class="primary" id="liveBtn">Audit an agent…</button>
   </div>
 </header>
 
 <main id="app"><div class="empty">Loading saved runs…</div></main>
 
 <dialog id="liveDialog">
-  <h3 style="margin-top:0">Run a live drill</h3>
-  <p class="lede" style="margin-bottom:12px">Audits the agent on Nemotron through Token Factory, has Nemotron write fixes, and re-audits them.
-     Takes about 5 to 10 minutes and uses your Token Factory credits. Requires <span class="mono">API_KEY</span> in <span class="mono">.env</span>.</p>
-  <div class="controls" style="margin-bottom:12px">
-    <select id="liveAgent"></select>
-    <label style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="liveSandbox" checked> Run in Token Factory Sandboxes</label>
-    <button class="primary" id="liveStart">Start</button>
-    <button id="liveClose">Close</button>
+  <h3 style="margin:0 0 4px">Audit an agent</h3>
+  <p class="lede" style="margin:0 0 14px;font-size:14px">Pick a Nebius cookbook agent or paste a public GitHub link to a Python agent that calls
+    Token Factory. The code is fetched and audited inside Token Factory Sandboxes microVMs, never on this server.</p>
+  <div class="grid" style="gap:10px">
+    <div class="controls" style="flex-wrap:wrap">
+      <select id="liveSource"></select>
+      <input id="liveUrl" placeholder="https://github.com/owner/repo/tree/main/path/to/agent"
+             style="flex:1;min-width:280px;font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px">
+      <button id="liveFetch">Fetch</button>
+    </div>
+    <div id="liveInfo" class="sim" style="font-size:13px;color:var(--muted)"></div>
+    <div id="liveForm" style="display:none" class="grid" >
+      <label class="sim" style="font-size:13px">Command <input id="liveCmd" class="mono"
+        style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin-top:4px"></label>
+      <div><div class="label">Tools with real-world effects (watched for repeats after a crash)</div><div id="liveTools" style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px"></div></div>
+      <div class="controls" style="flex-wrap:wrap">
+        <button class="primary" id="liveAudit">Run audit</button>
+        <button id="liveFix">Audit + Nemotron fix</button>
+        <input id="liveCode" type="password" placeholder="access code (for fixes)"
+               style="font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px">
+      </div>
+    </div>
+    <div id="liveStatus" class="sim" style="font-size:12px;color:var(--muted)"></div>
   </div>
-  <pre class="log" id="liveLog">Not started.</pre>
+  <pre class="log" id="liveLog" style="margin-top:12px">Not started.</pre>
+  <div class="controls" style="justify-content:flex-end;margin-top:10px"><button id="liveClose">Close</button></div>
 </dialog>
 
 <script>
@@ -196,8 +212,8 @@ function heroHtml(run, before, after) {
       <div class="stage"><div class="k">1 · Break</div><div class="big fail">${failedIds.length} failure${failedIds.length === 1 ? "" : "s"}</div>
         <div class="d">${drills} drills on real Token Factory traffic: outages, rate limits, a garbled tool call, a crash after acting. Grade <b>${esc(before.grade)}</b> (${esc(before.score)}/100).</div></div>
       <div class="arr">→</div>
-      <div class="stage"><div class="k">2 · Fix</div><div class="big">${cands.length} fixes</div>
-        <div class="d">${esc(model)} read the code and the evidence and wrote ${cands.length} candidate fixes over ${(run.rounds || []).length} rounds, repairing its own mistakes from their error output.</div></div>
+      <div class="stage"><div class="k">2 · Fix</div><div class="big">${cands.length ? cands.length + " fixes" : "–"}</div>
+        <div class="d">${cands.length ? `${esc(model)} read the code and the evidence and wrote ${cands.length} candidate fixes over ${(run.rounds || []).length} rounds, repairing its own mistakes from their error output.` : "Audit-only run. Start “Audit + Nemotron fix” to have Nemotron write and prove a fix."}</div></div>
       <div class="arr">→</div>
       <div class="stage"><div class="k">3 · Prove</div><div class="big ${after && after.grade === "A" ? "pass" : ""}">${after ? esc(after.grade) + " " + esc(after.score) : "–"}</div>
         <div class="d">${after ? `The same ${drills} drills, re-run on the chosen fix: ${(after.passed || []).length + (after.baseline_ok ? 1 : 0)} of ${drills} pass.` : "No fix passed yet."}</div></div>
@@ -205,6 +221,7 @@ function heroHtml(run, before, after) {
       <div class="stage"><div class="k">4 · Isolate</div><div class="big">${vms ? vms + " microVMs" : "Local"}</div>
         <div class="d">${vms ? "Every audit ran in its own Token Factory Sandboxes microVM; each fix was a branch of one agent checkpoint." : "This run used local copies of the agent. Use --sandbox to run every audit in a Token Factory microVM."}</div></div>
     </div>
+    ${!found.length && before.baseline_ok ? '<div class="verdictline"><b class="p">No failures found</b> in these drills.</div>' : ""}
     ${found.length ? `<div class="verdictline"><b class="f">Found:</b> ${esc(found.join("; "))}. ${after && after.grade === "A" ? '<b class="p">Fixed and proven.</b>' : ""}</div>` : ""}
   </section>`;
 }
@@ -418,22 +435,57 @@ async function init() {
   picker.innerHTML = runs.map((r) => `<option value="${esc(r.file)}">${esc(r.agent)} · ${esc(r.before)} → ${esc(r.after)} · ${esc(r.file.replace(".json", ""))}</option>`).join("");
   picker.onchange = () => loadRun(picker.value);
   if (runs.length) loadRun(runs[0].file);
-  else $("#app").innerHTML = '<div class="empty">No saved runs yet. Use “Run live…” to create one.</div>';
+  else $("#app").innerHTML = '<div class="empty">No saved runs yet. Use “Audit an agent…” to create one.</div>';
 
-  const agents = await (await fetch("/api/agents")).json();
-  $("#liveAgent").innerHTML = Object.entries(agents).map(([k, v]) => `<option value="${esc(k)}">${esc(v.title)}</option>`).join("");
 }
 
-let poller = null;
-$("#liveBtn").onclick = () => $("#liveDialog").showModal();
+let poller = null, fetched = null, cfg = {};
+
+async function loadConfig() {
+  cfg = await (await fetch("/api/config")).json();
+  const src = $("#liveSource");
+  src.innerHTML = Object.entries(cfg.presets).map(([k, v]) => `<option value="${esc(k)}">Cookbook: ${esc(v.title)}</option>`).join("")
+    + '<option value="github">Your GitHub agent…</option>';
+  const sync = () => { $("#liveUrl").style.display = src.value === "github" ? "" : "none"; };
+  src.onchange = () => { sync(); $("#liveForm").style.display = "none"; $("#liveInfo").textContent = ""; };
+  sync();
+  $("#liveCode").style.display = cfg.fix_requires_code ? "" : "none";
+  $("#liveFix").disabled = !cfg.fix_available;
+  $("#liveStatus").textContent = (cfg.sandbox_available ? "Audits run in Token Factory Sandboxes. " : "Sandboxes aren't configured on this server, so live runs are off. ")
+    + `${cfg.jobs_left_today} run(s) left today` + (cfg.busy ? " · a run is in progress" : "")
+    + (cfg.fix_requires_code ? " · fixes need the access code" : "") + `.`;
+}
+
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return [r.ok, await r.json()];
+}
+
+$("#liveBtn").onclick = async () => { await loadConfig(); $("#liveDialog").showModal(); };
 $("#liveClose").onclick = () => $("#liveDialog").close();
-$("#liveStart").onclick = async () => {
+$("#liveFetch").onclick = async () => {
+  const src = $("#liveSource").value;
+  $("#liveInfo").textContent = "Fetching from GitHub…"; $("#liveForm").style.display = "none";
+  const [ok, d] = await post("/api/inspect", src === "github" ? {url: $("#liveUrl").value} : {preset: src});
+  if (!ok) { $("#liveInfo").textContent = d.error || "Could not fetch that agent."; return; }
+  fetched = d;
+  $("#liveInfo").innerHTML = `Fetched <b>${esc(d.label)}</b>: ${d.files} files${d.has_requirements ? ", requirements.txt (installed inside the sandbox)" : ""}.
+    ${d.entry ? "" : "No entry file found: enter the command."}`;
+  $("#liveCmd").value = d.command || "python main.py";
+  $("#liveTools").innerHTML = d.tools.length ? d.tools.map((t) =>
+    `<label><input type="checkbox" value="${esc(t)}" ${d.suggested_action_tools.includes(t) ? "checked" : ""}> <span class="mono">${esc(t)}</span></label>`).join("")
+    : '<span class="sim">No @tool functions found. The crash-and-rerun drill will be skipped.</span>';
+  $("#liveForm").style.display = "";
+};
+
+async function startRun(fix) {
+  if (!fetched) return;
   const log = $("#liveLog");
-  const r = await fetch("/api/live", {method: "POST", headers: {"Content-Type": "application/json"},
-                                      body: JSON.stringify({agent: $("#liveAgent").value, sandbox: $("#liveSandbox").checked})});
-  const d = await r.json();
-  if (!r.ok) { log.textContent = d.error || "Could not start."; return; }
-  log.textContent = "Started…";
+  const tools = [...document.querySelectorAll("#liveTools input:checked")].map((i) => i.value);
+  const [ok, d] = await post("/api/live", {token: fetched.token, command: $("#liveCmd").value, action_tools: tools,
+                                           fix, code: $("#liveCode").value});
+  if (!ok) { log.textContent = d.error || "Could not start."; return; }
+  log.textContent = "Started. The first sandbox run can take a minute while the runtime image loads…";
   clearInterval(poller);
   poller = setInterval(async () => {
     const j = await (await fetch("/api/jobs/" + d.job)).json();
@@ -444,8 +496,10 @@ $("#liveStart").onclick = async () => {
       log.textContent += j.status === "done" ? "\n\nDone. Loading the new run…" : "\n\nFailed: " + j.error;
       if (j.status === "done") { await init(); $("#runPicker").value = j.run; loadRun(j.run); }
     }
-  }, 2000);
-};
+  }, 2500);
+}
+$("#liveAudit").onclick = () => startRun(false);
+$("#liveFix").onclick = () => startRun(true);
 
 init();
 </script>

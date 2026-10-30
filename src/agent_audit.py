@@ -336,6 +336,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--pairs", type=int, default=3)
     ap.add_argument("--out", help="write the audit JSON here")
     ap.add_argument("--sandbox", action="store_true", help="run the audit inside a Token Factory Sandboxes microVM")
+    ap.add_argument("--name", help="display name for the agent in reports")
     args = ap.parse_args(argv)
 
     _load_env_file()
@@ -353,6 +354,7 @@ def main(argv: list[str] | None = None) -> None:
             command[0] = sys.executable
         action_tools = args.action_tool
         name = f"{Path(args.workdir).resolve().name}/{Path(command[-1]).name}" if command else Path(args.workdir).name
+    name = args.name or name
     env = {"NEBIUS_MODEL": args.model, **dict(kv.split("=", 1) for kv in args.env)}
     spec = AgentSpec(name, workdir, command, action_tools or args.action_tool, env)
     auditor = AgentAuditor(args.upstream, os.environ.get(args.key_env) or os.environ.get("NEBIUS_API_KEY"),
